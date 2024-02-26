@@ -1,0 +1,120 @@
+---
+title: "Frequency Extract"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Frequency Extract}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup}
+library(mdrcAnalysis)
+library(tidyverse)
+# Loading example baseline data
+ut <- read.csv("/data/share/xproject/Training/Data Sources/UTEvals2.csv") %>%
+  # making ethnicity missing at random
+  mutate(gender = if_else(sample(c(TRUE, FALSE), n(), TRUE),
+                             gender, NA_character_))
+```
+
+## Overview and Motivation
+
+Producing a simple frequency table in R is a relatively simple task with many
+different easy implementations. This function is not intended to replace simple
+data checks like using `dplyr::count` or `janitor::tabyl`, rather it simplifies
+the variable selection and output generation processes for the user. Here we see
+the result of a the default call on the `ut` dataset:
+
+```{r}
+freq_extract(ut)
+```
+Here, the function automatically selects variables that have fewer than 24 
+unique values to present on. It presents frequencies, cumulative frequencies,
+percentages, and cumulative percentages on each unique value including missings.
+This type of default call can be used in initial data investigations and
+presentations.
+
+## Selecting Variables
+
+`freq_extract` does not currently support tidyselection of variables but 
+it does allow users to either explicitly select variables to run their extract 
+on. Alternatively, you can change the unique values limit in the automatic
+column selection process.
+
+### Explicit Selection
+
+Here I explicitly select 2 variables to perform a frequency extract on. 
+`cls_did_eval` has 83 unique values which would have blocked it from the
+automatic variable selection process.
+
+```{r}
+freq_extract(ut, c("rank", "cls_did_eval"))
+```
+
+### Changing Automatic Selection
+
+Here I explicitly select all binary variables. Note that `gender` is still 
+included despite having 3 rows in the resulting frequency count. That is because
+the missing value does not factor into the `.max_lvls` selection process.
+
+```{r}
+freq_extract(ut, .max_lvls = 2)
+```
+
+## Frequencies By Groups
+
+We frequently want frequencies by a grouping variable. Although I recommend 
+using [crosstab-extract](crosstab_extract.html) for more complex cross
+tabulations, the `.by_group` argument in this function should suffice for most
+simple tasks. Here I show the frequency extract on all binary variables grouped
+by `gender`.
+
+```{r}
+freq_extract(ut, .max_lvls = 2, .by_group = "gender")
+```
+
+## Weighting Observations
+
+By default, `freq_extract` weights all observations equally. If we wish to 
+weight our tabulations by another column in the data, we can easily do that with
+the `.wt_var` argument. Here I weight the binary variable frequencies by
+`prof_eval`. Note that unweighted frequencies and percentages are aalso still
+displayed alongside their weighted counterparts.
+
+```{r}
+freq_extract(ut, .max_lvls = 2, .wt_var = "prof_eval")
+```
+
+# Removing Observations
+
+If you want to remove missing values from the extract, particulary so that the 
+cumulative frequecies and cumulative percentages do not include missing values,
+set `.na_rm` to `TRUE`.
+```{r}
+freq_extract(ut, "gender", .max_lvls = 2, .na_rm = F)
+```
+```{r}
+freq_extract(ut, "gender", .max_lvls = 2, .na_rm = T)
+```
+
+## Exporting to Excel
+
+The function also supports exporting the extract into an excel sheet for
+distribution using 
+```{r}
+freq_extract(ut, .max_lvls = 3, .by_group = "gender",
+             .wt_var = "prof_eval", .na_rm = TRUE,
+             .output_file = "freq_extract_example",
+             .output_path = "../example_extract")
+```
+
+Here is a screenshot of this output on excel.
+![screenshot of example excel output](freq_extract_example.png)
+

@@ -1,0 +1,60 @@
+Package: OLDmdrcAnalysis
+Title: Functions for Analysis at MDRC
+Version: 0.1.0
+Authors@R: c(
+    person("Benjamin", "Bui", , "Benjamin.Bui@mdrc.org", role = "aut"),
+    person("Julie", "Glew", , "Julie.Glew@mdrc.org", role = "aut"),
+    person("Melvin", "Gutierrez", , "Melvin.Gutierrez@mdrc.org", role = c("aut", "cre")),
+    person("Zarni", "Htet", , "Zarni.Htet@mdrc.org", role = "aut")
+  )
+Description: A package for analysis functions commonly used at MDRC. Current 
+    functions include \link[mdrcAnalysis]{freq_extract}, 
+    \link[mdrcAnalysis]{mean_extract}, \link[mdrcAnalysis]{corr_extract}, 
+    \link[mdrcAnalysis]{crosstab_extract}, \link[mdrcAnalysis]{ttest_extract}, 
+    \link[mdrcAnalysis]{lm_extract}, \link[mdrcAnalysis]{robustreg_extract}, 
+    \link[mdrcAnalysis]{ht_extract}, and \link[mdrcAnalysis]{mixed_extract}.
+License: `use_mit_license()`, `use_gpl3_license()` or friends to pick a
+    license
+Depends: 
+    R (>= 2.10)
+Imports:
+    broom.mixed,
+    fastDummies,
+    forcats,
+    lme4,
+    lmerTest,
+    magrittr,
+    mlmRev,
+    rlang
+Suggests: 
+    broom,
+    corrplot,
+    dplyr,
+    emmeans,
+    fabricatr,
+    janitor,
+    knitr,
+    lmtest,
+    openxlsx,
+    psych,
+    purrr,
+    readr,
+    readxl,
+    rmarkdown,
+    rstudioapi,
+    sandwich,
+    stringr,
+    testthat (>= 3.0.0),
+    tibble,
+    tidyr,
+    tidyselect,
+    VGAM,
+    withr,
+    writexl
+VignetteBuilder: 
+    knitr
+Config/testthat/edition: 3
+Encoding: UTF-8
+LazyData: true
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.2.3

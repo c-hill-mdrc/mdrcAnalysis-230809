@@ -1,0 +1,186 @@
+---
+title: "Generating Codebooks"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Generating Codebooks}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup}
+library(mdrcAnalysis)
+# Loading tidyverse
+library(tidyverse)
+# Loading in data files
+load("../data/Codebook Data.RData")
+```
+
+```{r}
+```
+
+# Motivation
+
+This function was developed to automate the process of codebook creation in R. It is designed for use with wide dataframes (i.e. descriptives desired over various columns of data) and will generate a "nicely" formatted pdf document with tables presented in a logical order. The function can also produce a list of these extracts instead of printing to the document if desired via a function argument and, if there is enough desire for it, it would be possible to configure the function to output tables for word or html documents although this is currently not in the function.
+
+Note: The nature of R vignettes makes it impractical to actually run the function in this document. Instead, screenshots are included of the goal output for you to compare with your own testing
+
+# File Set-Up
+
+## pdf_document Output
+
+This is necessary for the output to work as desired when knitting to pdf. The codebook function takes advantage of several specific LaTeX calls in order to format and generate it's output; however, this requires you to adjust your YAML header. The YAML header is the section of your R markdown at the top that is surrounded by $---$. If using codebook_interleave() to output to pdf, set the following as your output:
+
+````{verbatim}
+output: pdf_document
+header-includes:
+  - \usepackage{float}
+  - \usepackage{booktabs}
+  - \usepackage{longtable}
+````
+
+Please note that the indentation and spacing here must be kept when copying into your document. 
+
+# Simple Codebook
+
+First we need to load in the data that we actually want to generate a codebook from. Here we have some de-identified, classroom level data from the VIQI project.
+
+
+```{r}
+head(giq.filtered_wide)
+```
+
+The codebook function has 2 types of options for data, we'll call these freqs and means. freq output is useful for categorical data or cases where the numbers themselves don't have meaningful mathematical tracability. mean output is useful when the numeric value of the numbers is useful. As an example, suppose we had a variable called `Color` that has a value of 1, 2, or 3 where 1 is Red, 2 is Blue, and 3 is Green. The frequency distribution of this variable could be useful but taking the mean or median of this type of categorical variable doesn't tell us much of anything meaningful about the data. If we instead had a measure of quality that takes values of 1 through 5 where 1 is low quality and 5 is high quality, univariate statistics like mean and median do tell us something useful about the data. As a rule of thumb, I would errr on the side of taking the freq of variables and then adding means as needed.
+
+## Selecting Variables
+
+Let's suppose here that I want frequencies of questions 1 through 10 and 20 through 30. I also want means of question 15 through 25. Once you've made this decision, you need to store your choices in a character vector.
+
+Here I show one way that I select variables by taking advantage of the regex functions offered to us by tidyverse. If you're not comfortable with this yet, you can always hard code the names into a vector
+
+```{r}
+freq_vars <- names(giq.filtered_wide)[str_detect(names(giq.filtered_wide), "_[1-9]$|10$|2[0-9]$|30$")]
+print(freq_vars)
+```
+
+```{r}
+mean_vars <- names(giq.filtered_wide)[str_detect(names(giq.filtered_wide), "1[5-9]$|2[0-5]$")]
+print(mean_vars)
+```
+
+We can now just pass these to the codebook function. Do note the `results = "asis"` included in the code chunk, this is also necessary fo the codebook to output as desired.
+
+````{verbatim}
+
+```{r, results = "asis"}
+codebook_interleave(freq_vars, mean_vars, giq.filtered_wide)
+```
+
+````
+
+![Frequency Extract](codebook_simple_freq.png)
+
+![Mean Extract](codebook_simple_mean.png)
+
+![Extract if both freq and mean desired from variable](codebook_simple_combined.png)
+
+# Adding Labels and Factors 
+
+For more information on how the label and factor databased can be constructed
+see documentation and tutorials on metaSQL and qualtricsFedRAMP. To summarise
+though, these are data structures that contain mappings between variable names
+and verbose labels for the label database and numeric values and character
+values in the factor database
+
+The label database
+
+```{r}
+labeldb %>% 
+  select(variable_name, variable_label) %>%
+  mutate(across(where(is.character), ~str_trunc(., 20))) %>%
+  tail()
+```
+
+The factor database, truncating strings for the sake of the printout
+
+```{r}
+factordb %>% 
+  select(Question, matches("Val")) %>%
+  mutate(across(where(is.character), ~str_trunc(., 20))) %>%
+  tail()
+```
+
+If you have these data structures in place, codebook_interleave() can attempt
+to use them to better format the codebook. This is particularly useful when
+reading the codebook in the future as it provides more context on what the
+outputs refer to.
+
+Using the same data and selections but including our metadata structures.
+
+````{verbatim}
+
+```{r, results = "asis"}
+codebook_interleave(freq_vars, mean_vars, giq.filtered_wide, labeldb, factordb)
+```
+
+````
+
+![Labelled Frequency Extract](codebook_labelled_freq.png)
+
+![Labelled Mean Extract. Note the legend printed.](codebook_labelled_mean.png)
+
+![Labelled Extract if both freq and mean desired from variable.](codebook_labelled_combined.png)
+
+Note, you can also create a codebook consisting of only freqs or means.
+In this case, it is advised that you either explicitly name your arguments when
+calling codebook_interleave() or set the value of these arguments to NULL.
+As an example, say we only want to generate a codebook of the desired freqs,
+below are 2 valid ways to accomplish this.
+
+
+````{verbatim}
+
+```{r, results = "asis"}
+codebook_interleave(.freq_factors = freq_vars, .data = giq.filtered_wide, .labeldb = labeldb, .factordb = factordb)
+```
+
+````
+
+````{verbatim}
+
+```{r, results = "asis"}
+codebook_interleave(freq_vars, NULL, giq.filtered_wide, labeldb, factordb)
+```
+
+````
+
+# Other Output Options
+
+codebook_interleave() currently supports 1 other output option besides "pdf": "list. This generates a named list of dataframes that provide that the formatted tables are based off of. This is useful if making a codebook in html, word document, or excel format. These other output formats could be created if there is sufficient interest but are not currently supported.
+
+Note that because we are making a list and not a formatted print out, `results = "asis"` is no longer required or desired in the code chunk options
+
+```{r}
+codebook.list <- codebook_interleave(
+freq_vars,  mean_vars, giq.filtered_wide, labeldb, factordb, .output = "list")
+```
+
+Here I am printing some elements of this list to give an idea of what these dataframes look like. You can see that the variable name, variable label, and output dataframes are included in each element of this list.
+
+```{r}
+codebook.list$BGIQ_7
+```
+
+```{r}
+codebook.list$BGIQ_16
+```
+
+```{r}
+codebook.list$BGIQ_20
+```

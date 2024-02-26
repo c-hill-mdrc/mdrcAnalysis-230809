@@ -1,0 +1,405 @@
+---
+title: "Analysis of Intro R BIF Data"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+# Load Packages
+The `tidyverse` package is used extensively for data manipulation and restructuring. The `broom` packages is used to "tidy" analysis results. The `emmeans` packages is used to calculated estimated marginal means, a.k.a. least-square means. 
+```{r, include=FALSE}
+library(tidyverse) # package for reading/manipulating data and functional programming
+library(broom)     # package which restructures analysis objects
+library(emmeans)   # package for calculating least square means or estimated marginal means
+```
+
+# Read in Final BIF Data
+Using the `read_csv()` function from the readr package. 
+
+```{r, include=FALSE}
+# Assign directory to variable
+BIF <- "/data/share/xproject/Training/Data Sources/BIF_Final.csv"
+
+# Use the read_csv() function from the readr package to read in the comma-separated file
+Step2BIF <- read_csv(BIF)
+
+# Convert COHORT to a factor for analysis
+FinalBIF <- Step2BIF %>% 
+  mutate(CohortFactor = factor(COHORT))
+```
+
+# Check Unadjusted Means of BIF Outcomes
+The unadjusted means, both of the full sample and for each group in the sample, can be very useful for analysis. In some cases, projects find it useful to use the unadjusted control group mean as the basis for the impact. Additionally, there are many ways to calculate the effect size if a project would like to report that. 
+
+## Calculate Unadjusted Stats for One Variable
+This will be used to create our example extract. 
+
+For calculating statistics, the `summarise()` function from the `dplyr` package is hugely useful for getting basic stats. The `group_by()` function can be used to calculate group statistics. The `pivot_longer()` and `pivot_wider()` from the `tidyr` package to restructure the results into more standard extract form. 
+
+```{r}
+# Calculate the dependent variable mean
+DepVarMean <- 
+  FinalBIF %>% 
+  filter(!is.na(RA_CODE)) %>% 
+  summarise(blmale = mean(blmale, 
+                          na.rm = TRUE)) %>% 
+  pivot_longer(everything(), 
+               values_to="DepVarMean")
+
+# Calculate the dependent variable standard deviation
+DepVarSD <- 
+  FinalBIF %>% 
+  filter(!is.na(RA_CODE)) %>% 
+  summarise(blmale = sd(blmale, 
+                        na.rm = TRUE)) %>% 
+  pivot_longer(everything(), 
+               values_to="DepVarSD")
+
+# Calculate the group means
+UnadjustedMean <- 
+  FinalBIF %>% 
+  filter(!is.na(RA_CODE)) %>% 
+  group_by(RA_CODE) %>% 
+  summarise(blmale = mean(blmale, 
+                          na.rm=TRUE)) %>% 
+  pivot_longer(-RA_CODE) %>% 
+  pivot_wider(id_cols=name, 
+              names_from = RA_CODE, 
+              names_prefix="UnadjustedMean_", 
+              values_from=value) 
+
+# Calculate the group standard deviations
+UnadjustedSD <- 
+  FinalBIF %>% 
+  filter(!is.na(RA_CODE)) %>% 
+  group_by(RA_CODE) %>% 
+  summarise(blmale = sd(blmale, 
+                        na.rm=TRUE)) %>% 
+  pivot_longer(-RA_CODE) %>% 
+  pivot_wider(id_cols=name, 
+              names_from = RA_CODE, 
+              names_prefix="UnadjustedSD_", 
+              values_from=value) 
+
+# Calculate the variable sample sizes
+N <- 
+  FinalBIF %>% 
+  filter(!is.na(RA_CODE)) %>% 
+  group_by(RA_CODE) %>% 
+  summarise(n = n()) %>% 
+  pivot_longer(-RA_CODE) %>% 
+  pivot_wider(id_cols = name, 
+              names_from = RA_CODE, 
+              names_prefix = "N_", 
+              values_from=value) %>% 
+  mutate(N = N_C + N_P) %>% 
+  select(-name)
+
+# Join all unadjusted statistics
+UnadjStat <- 
+  full_join(DepVarMean, DepVarSD, by = "name") %>% 
+  full_join(UnadjustedMean, by = "name") %>% 
+  full_join(UnadjustedSD, by = "name") %>% 
+  bind_cols(N) %>% 
+  rename(dependent = name)
+
+UnadjStat
+```
+
+## Calculating Unadjusted Stats for Many Variables
+In most cases, extracts are desired for many variables. In those cases, the same functions for summarising single variables can be used to calculate statistics for the entire data set. The `across()` function from `dplyr` does a lot of heavy lifting and the `map_dfc()` function from the `purrr` package and `map()` family of functions also comes in handy for generating stats that might not have a direct function or might not operate on data frames. 
+
+```{r}
+# Calculate full group means and standard deviations
+DepVarMeans <- 
+  FinalBIF %>% 
+  filter(!is.na(RA_CODE)) %>% 
+  summarise(across(starts_with("bl"), 
+                   list(mean = mean, sd = sd), 
+                   na.rm=TRUE, 
+                   .names="{col}.{fn}")) %>% 
+  pivot_longer(everything(), 
+               names_to = c("dependent", "function"), 
+               names_sep = "\\.") %>% 
+  pivot_wider(id_cols = "dependent", 
+              names_from = "function") %>% 
+  rename(DepVarMean = mean, 
+         DepVarSD   = sd)
+
+# Calculate Means by group per variables
+UnadjustedMeans <- 
+  FinalBIF %>% 
+  filter(!is.na(RA_CODE)) %>% 
+  group_by(RA_CODE) %>% 
+  summarise(across(starts_with("bl"), mean, na.rm=TRUE)
+           ,nsample           = n()
+            ) %>% 
+  pivot_longer(-RA_CODE) %>% 
+  pivot_wider(id_cols=name, 
+              names_from = RA_CODE, 
+              names_prefix="UnadjustedMean_", 
+              values_from=value) %>% 
+  rename(dependent = name)
+
+# Calculate Standard Deviation by group per variables
+UnadjustedSDs <- 
+  FinalBIF %>% 
+  filter(!is.na(RA_CODE)) %>% 
+  group_by(RA_CODE) %>% 
+  summarise(across(starts_with("bl"), 
+                   sd, 
+                   na.rm=TRUE)) %>% 
+  pivot_longer(-RA_CODE) %>% 
+  pivot_wider(id_cols=name, 
+              names_from = RA_CODE, 
+              names_prefix="UnadjustedSD_", 
+              values_from=value) %>% 
+  rename(dependent = name)
+
+# Calculate Full Sample Size
+Full_Sample <- 
+  select(FinalBIF, starts_with("bl")) %>% 
+  map_dfc(~sum(!is.na(.))) %>% 
+  pivot_longer(everything(), 
+               names_to = "dependent", 
+               values_to = "N_Full")
+
+# Calculate Group Sample Sizes by variable
+# Note: across must be used otherwise just get group sample size for entire data set
+Group_Samples <- 
+  FinalBIF %>% 
+  group_by(RA_CODE) %>% 
+  summarise(across(starts_with("bl"), ~sum(!is.na(.)))) %>% 
+  pivot_longer(-RA_CODE, 
+               names_to = "dependent", 
+               values_to="N") %>% 
+  pivot_wider(id_cols = "dependent", 
+              names_from = "RA_CODE", 
+              names_prefix = "N_", 
+              values_from = "N")
+
+# Combine Means and Standard Deviations
+UnadjustedStats <- 
+  full_join(DepVarMeans, UnadjustedMeans, by = "dependent") %>% 
+  full_join(UnadjustedSDs, by = "dependent") %>% 
+  full_join(Full_Sample, by = "dependent") %>% 
+  full_join(Group_Samples, by = "dependent")
+
+head(UnadjustedStats)
+```
+
+Note: `group_by()` can be used inside functions but the variables need to be wrapped in double curly brackets (`{{}}`). This is due to semantic ambiguity when referencing variables inside a function ([more details](https://www.tidyverse.org/blog/2020/02/glue-strings-and-tidy-eval/)). As an alternative, the `aggregate()` function can be used instead.
+
+```{r}
+# Calculate Group Sample Sizes by variable
+## Works inside functions without double curly brackets
+aggregate(FinalBIF, by=list(FinalBIF$RA_CODE), function (x) sum(!is.na(x)))%>% 
+  pivot_longer(-Group.1, names_to = "dependent", values_to="N") %>% 
+  pivot_wider(id_cols = "dependent", 
+              names_from = Group.1, 
+              names_prefix = "N_", 
+              values_from = "N") %>% 
+  tail()
+```
+
+# Regular OLS model
+The `lm()` function from the stats package to create a linear model. To specify a model, you can use the `outcome ~ treatment + covar1 + covar2` formula structure. For interactions, the `covar1:covar2` notation can be used, which will take the interaction of all levels in covar1 and covar2 (note: levels for factors, otherwise the interaction). Further, the `covar1*covar2` notation can be used to act as `covar1 + covar2 + covar1:covar2`. 
+
+Model results are also an object that can be named and manipulated. These are not generally data frames or other simple objects. The structure can vary greatly. 
+
+The `summary()` function is a generic function used to produce result summaries of the results of various model fitting functions. It can be used on most analysis objects. 
+
+The `tidyverse` also has the `broom` package which specifically creates data frames of the model object output. The `tidy()` function returns the main statistics from the model object, the `glance()` function returns additional statistics (if available), and the `augment()` function will return row-level statistics (if available). 
+
+```{r}
+# Create model and assign it to model1
+model1 <- lm(blmale ~ RA_CODE + CohortFactor, data=FinalBIF)
+
+# Check model1 structure and results
+model1          # just the formula and coefficients
+
+str(model1)     # list of 14 objects, some objects are lists as well
+summary(model1) # formula, residuals, coefficients, standard errors, t-/p-values, R^2, etc. 
+
+tidy(model1)    # df with estimates, standard errors, t- & p-values
+glance(model1)  # df with r^2, adj. r^2, and whole model results (F-statistic, AIC, BIC)
+augment(model1) %>% # df with row-level statistics: predicted values, residuals, etc. 
+  head()
+```
+
+# Calculating least-square means
+Least square means or estimated marginal means are equally weighted means of predictions at specified margins. 
+
+NOTE: covariates having only two distinct values (binary) are by default treated as two-level factors, though there is an option to reduce them to their mean.
+```{r}
+# review the reference grid - lists all reference levels
+ref_grid(model1)
+
+# calculate least square means (a.k.a. estimated marginal means (em means))
+# first argument is model, second argument is character vector of predictors over which EMMs are calculated
+m1_lsmeans <- emmeans(model1, "RA_CODE")
+
+m1_lsmeans
+
+# Use the tidy() function on the results from emmeans
+tidy(m1_lsmeans)
+#glance(m1_lsmeans)   # No output of this type for emmeans results
+#augment(m1_lsmeans)  # No output of this type for emmeans results
+```
+
+# Calculating confidence intervals
+Confidence intervals represent the range in which estimates of the parameter will fall given sufficient repetitions. The usual levels are 90%, 95%, 99% confidence intervals.    
+The range provided depends on the level provided:  
+* higher level -> higher confidence -> wider range  
+* lower level -> lower confidence -> narrower range
+Upon examination, this becomes intuitive as a higher confidence requires a wider range so that more outliers are captured. 
+
+The `confint()` function is used for confidence intervals. Confidence intervals can be calculated on the estimated/adjusted means and on the estimated impact. 
+```{r}
+# Tidy-ed output for confidence intervals on means
+estCI <- 
+  tidy(confint(m1_lsmeans, estimate, level = 0.90)) %>% 
+  select(-c("std.error", "df"))
+
+# Confidence interval for impact
+ impCI <- 
+   as.data.frame(confint(model1, "RA_CODEP", level = 0.90)) %>% 
+   rownames_to_column() %>% 
+   rename(dependent = rowname,
+          conf.low_impact = `5 %`,
+          conf.high_impact = `95 %`) %>% 
+   mutate(dependent = "blmale")
+```
+
+# Calculating Effect Sizes
+The effect size is a standardization of the impact. This technique is used to more effectively compare impacts across projects, though it is most effective when comparing studies of similar types and methods. The effect size is calculated by taking the impact and dividing it by the population standard deviation. There are many ways to estimate the population standard deviation, most commonly used at MDRC are:  
+* "Overall" - Using the full sample, unadjusted dependent variable standard deviation .   
+* "Pooled" - a.k.a Hedge's g; using the weighted, unadjusted standard deviations of each group.
+* "Control" - a.k.a Glass's delta; using the unadjusted control group standard deviation.
+Note: The standard deviations are the unadjusted standard deviations, which are taken from the unadjusted statistics created earlier. 
+
+```{r}
+# Overall Effect Size
+tidy(model1) %>% 
+  filter(term == "RA_CODEP") %>% 
+  rename(dependent = term) %>% 
+  mutate(dependent = "blmale") %>% 
+  full_join(UnadjStat, by = "dependent") %>% 
+  mutate(ES_Overall = abs(estimate)/DepVarSD)
+
+# Pooled Effect Size
+tidy(model1) %>% 
+  filter(term == "RA_CODEP") %>% 
+  rename(dependent = term) %>% 
+  mutate(dependent = "blmale") %>% 
+  full_join(UnadjStat, by = "dependent") %>%
+  rename(impact = estimate) %>% 
+  mutate(ES_Pooled = abs(impact)/sqrt((((N_C-1)*UnadjustedSD_C^2) + ((N_P-1)*UnadjustedSD_P^2))/(N_C + N_P - 2)))
+
+# Control Effect Size
+tidy(model1) %>% 
+  filter(term == "RA_CODEP") %>% 
+  rename(dependent = term) %>% 
+  mutate(dependent = "blmale") %>% 
+  full_join(UnadjStat, by = "dependent") %>% 
+  mutate(ES_Control = abs(estimate)/UnadjustedSD_C)
+
+```
+
+
+# Writing to an extract
+The broom package gives us tibbles to work with, but we still need to restructure and join the many pieces for the standard MDRC extract. 
+
+```{r}
+# Join tidy() emmeans and confint results
+m1_tibble <- 
+  tidy(m1_lsmeans) %>% 
+  select(-statistic, -p.value) %>% 
+  full_join(estCI, by = c("RA_CODE", "estimate"))
+
+# add column which specifies dependent variable
+m1_extract1 <-
+  m1_tibble %>% 
+  mutate(dependent = "blmale")
+
+# pivot to have one row per dependent variable and two columns for each statistic
+m1_extract2 <- 
+  pivot_wider(m1_extract1, 
+              names_from = RA_CODE, 
+              values_from = -dependent) %>% 
+  select(-starts_with("RA_CODE"))
+
+# Join with model results, rearranging output, and creating effect sizes
+extract <- tidy(model1) %>% 
+  filter(str_detect(term, "RA_CODE")) %>% 
+  rename(dependent = term, 
+         impact = estimate) %>% 
+  mutate(dependent = "blmale") %>% 
+  inner_join(m1_extract2, by = "dependent") %>% 
+  inner_join(impCI, by = "dependent") %>% 
+  select(dependent, 
+         starts_with("estimate"), 
+         impact, 
+         p.value, 
+         statistic, 
+         starts_with("std.error"), 
+         starts_with("df"), 
+         starts_with("conf.low"), 
+         starts_with("conf.high")) %>% 
+  full_join(UnadjStat, by = "dependent") %>% 
+  mutate(ES_Overall = abs(impact)/DepVarSD,
+         ES_Control = abs(impact)/UnadjustedSD_C,
+         ES_Pooled  = abs(impact)/sqrt((((N_C-1)*UnadjustedSD_C^2) + ((N_P-1)*UnadjustedSD_P^2))/(N_C + N_P - 2)))
+```
+
+# Add trail
+The "trail" is a useful set of information about the program and programmer that created the extract. This is very useful for tracking down any data questions, fact-checking, and revisiting code if it can be used for future efforts. Given the cross-program applicability, the "trail" was created in a separate script and is just called here. The code specifically creates a small data frame with the desired information, which can be added to any extract simply using the `bind_cols()` function from the `dplyr` package. 
+```{r}
+# Call function and assign output to name
+trail <- source("/data/share/xproject/Training/data-programming-user-code/Utility/Add trail in R/trail function.R")
+
+# bind results to mini-extract
+extract <- bind_cols(extract, trail)
+extract
+```
+
+# Export to Excel
+Extracts can be written to Excel using the `write_xlsx()` function from the `writexl` package. This allows tabling manually in Excel. Another more common option is to write the extract data to CSV format and reading that information directly into the MDRC Tabling Tool. To write to CSV, simply use the `write_csv()` function from the `readr` package. Notably, the `write_csv()` function has the `na=` parameter which allows the user to define the way in which missing data is presented in the CSV. 
+
+```{r}
+# export this to excel
+#writexl::write_xlsx(extract, path = "/data/share/xproject/training/practice/gutierrez/testing/r pilot 10 small.xlsx")
+
+# export to CSV
+#write_csv(extract, file = "/data/share/xproject/training/practice/gutierrez/testing/r pilot 10 small.csv", na =  "" )
+```
+
+# Creating a lm extract function
+While the steps to create your own extract are fairly simple, applying this to an entire data frame might be a bit tedious. As an alternative a function was created. This function is also available in the [user-code repository](https://github.com/MDRCNY/data-programming-user-code/) and can be `source()`-d as the "trail" was sourced at line 359. If the function is sourced, the function can be called as it is at line 599. 
+
+```{r}
+source("/data/share/xproject/Training/data-programming-user-code/Analysis/Regression/lm_extract.R")
+```
+
+# Create argument vectors and call function
+
+```{r}
+# Create vector of dependent variables
+FinalBIF_dependents <- names(FinalBIF[setdiff(names(FinalBIF), c("SAMPLEID", "RA_CODE", "CohortFactor", "COHORT", "RA_DATE", "AGE", "DOB", "blcurhrs_73plus"))])
+FinalBIF_treatment  <- "RA_CODE"
+FinalBIF_covariates <- "CohortFactor" 
+
+# Call the function on desired variables
+extract <- lm_extract(FinalBIF, FinalBIF_dependents, FinalBIF_treatment, FinalBIF_covariates, confintalpha = .9)
+extract
+```
+
+# Exporting the final df
+Once the final data frame is created, exporting is as simple as with a single variable.
+
+```{r}
+# export extract
+#write_csv(extract, path = "/data/share/xproject/training/practice/gutierrez/testing/r pilot 10 large.csv", na = "")
+#writexl::write_xlsx(extract, path = "/data/share/xproject/training/practice/gutierrez/testing/r pilot 10 large.xlsx")
+```
+

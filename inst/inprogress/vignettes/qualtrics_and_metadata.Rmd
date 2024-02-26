@@ -1,0 +1,69 @@
+---
+title: "Using qualtricsFedRAMP with SQL"
+author: "Benjamin Bui"
+date: "`r Sys.Date()`"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Using qualtricsFedRAMP with SQL}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r, warning=F, message=F}
+library(mdrcAnalysis)
+library(tidyverse)
+```
+
+# Motivation
+
+For an introduction to using the qualtricsFedRAMP function, please see `qualtricsFedRAMP Basics`. This vignette will go into further depth on how one can use these functions as part of their data and metadata workflow. As these functions were designed around uploading their files to SQL, they may include infomration or perspectives that are unecessary to your own workflow. These characteristics can be ignored or repurposed for your own project or use case as needed.
+
+# Associating Metadata and Data
+
+Data and metadata are both equally important when doing real data analysis. Quantitative data, by definition, is numeric and mathematically tractable but without metadata, there is no way to differentiate or make meaningful interpretations of the numerics. Storing our data in dataframes with meaningful variable names helps but then there is a balance to strike between ease in programming and ease in interpretation. Moreover, a short abbreviation may make sense now as a substitute for a paragraph describing a measure but it very well may not a few weeks down the line or in the eyes of a new programmer tasked to do a code review. This part of the problem was the primary motivation for this implementation of labels metadata storage (in addition to SQL row length restrictions and the lack of compatability with using a "label" attribute in R with SQL and other R packages). 
+
+Here we create an assocation between variable names and variable labels as a dataframe.
+```{r, results = "hide"}
+# Loading metadata
+metadata.list <- read_meta("../data/StaffOutreachSurvey.Test.Numeric.Updated.csv",
+                  "../data/StaffOutreachSurvey.Test.Character.Updated.csv")
+```
+
+```{r}
+head(metadata.list$LabelDatabase)[, 1:2]
+```
+
+There is now an issue of variable name uniqueness. Although we can theoretically make sure evey column name for every data source we ever receive/calculate is unique, this is a dangerous policy to make. We could store data and metadata in separate files for each data source but it is fairly impractical to store 3 tables for each data source and measure creation made. The decision we have come to is to store data in separate tables but keep all labels in a single table and all factors in a single table. Then, we can match metadata to data using the other columns in our metadata tables:
+
+```{r}
+head(metadata.list$LabelDatabase)[3:5]
+```
+
+Here we see that our label database has columns set up for this association but everything is missing. Suppose we intend storing this data in the SQL table [dbo].[Staff_Outreach_Raw]. We can then read in our metadata with this information as arguments:
+
+```{r, results = "hide"}
+new_meta.list <- read_meta("../data/StaffOutreachSurvey.Test.Numeric.Updated.csv",
+          "../data/StaffOutreachSurvey.Test.Character.Updated.csv",
+          .schema_name = "dbo",
+          .table_name = "Staff_Outreach_Raw")
+```
+
+This automatically populates our label database columns with the relevant information:
+```{r}
+head(new_meta.list$LabelDatabase)[3:5]
+```
+
+The same occurs with the factor database:
+```{r}
+head(new_meta.list$FactorDatabase)[5:7]
+```
+
+Now, provided we store data as specified, we can easily filter the label and factor databases based on what data we are working with. Note, these identifier arguments also exist in `initial_read()`.
+

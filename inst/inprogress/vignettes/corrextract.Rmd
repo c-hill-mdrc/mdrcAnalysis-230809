@@ -1,0 +1,120 @@
+---
+title: "Correlation Extracts"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Correlation Extracts}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup}
+library(mdrcAnalysis)
+library(tidyverse)
+library(openxlsx)
+# Loading data
+data <- read.xlsx(file.path(
+  "/data/share/xproject/Training/Data Sources",
+  "DPUG 032021 Random data for mixed models with binary outcomes.xlsx"))
+```
+
+It is relatively trivial to create a basic correlation table in R. This tool is 
+not intended to replace these methods entirely; however, it is intended to ease
+the creation of an extract viewable and interpretable outside of R-Studio.
+
+We will be working with some synthetic data from the RTU for this extract:
+
+```{r}
+head(data)
+```
+
+## Output in R
+
+Here is the default R output of corr_extract on the example data.
+
+```{r}
+corr_extract(data, .ExcelFN = FALSE)
+```
+
+This extract performs the following actions by default:
+* Correlations between ALL numeric variables
+* No by group comparisons
+* Correlations calculated with pairwise deletions, pearsons method, and no 
+imputation
+* Displays correlations, p-scores from t-test comparisons and the number of obs
+* Also displays the means, raw Cronbach alphas, and standardized alphs
+
+## By Group Comparisons
+
+You can add a single variable to the `.ByX` parameter in order to divide 
+correlations by the values of this variable. 
+
+Here I include "school_id" as a by variable. This adds a column called
+"school_id" to the resulting output that informs which group the correlations
+are under.
+```{r}
+corr_extract(data, .Var = c("outcome1", "outcome2"),
+            .ByX = "school_id", .ExcelFN = FALSE)
+```
+
+## With Variable
+
+If you want to perform correlations between a vector variables against 1
+variable, specify the single variable with `.WithVar`. See here this output
+provides correlations between the "female" variable against "outcome1" and 
+"outcome2". It is important to note that, when using this option, you must 
+explicitly specify the `.Var` parameter.
+
+```{r}
+corr_extract(data, .Var = c("outcome1", "outcome2"),
+            .WithVar = "female", .ExcelFN = FALSE)
+```
+
+## Other Usage Parameters
+
+* .Method Method to use for correlations, defaults to "pearson"
+* .Use Determines if correlations will be calculated with "pairwise"
+deletions or with "complete" data
+* .Round Digits to round to in final excel output
+* .ExcelFN Excel file name, defaults to mycorr.xlsx
+* .ExcelSN Excel sheet name, defaults to Correlations
+* .Plot Boolean determining if correlation plot included in Excel
+* .Stats Character vector of other univariate methods to include in
+output. Defaults to "mean"
+* .Prob Boolean determining if t-test probability will be displayed
+* .NObs Booleann determining if number of observations will be displayed
+
+## Formatted Excel Output
+
+As stated before, the primary purpose of this function is to provide a formatted
+excel as output. Here is some output in R and a screenshot in excel as a 
+comparison.
+
+```{r}
+# R output
+corr_extract(data, .Var = c("dual_lang", "outcome1", "outcome2"),
+            .ByX = "school_id",
+            .Impute = TRUE,
+            .Method = "spearman",
+            .ExcelFN = FALSE)
+```
+
+```{r eval = FALSE}
+# R output
+corr_extract(data, .Var = c("dual_lang", "outcome1", "outcome2"),
+              .Impute = TRUE,
+              .Method = "spearman",
+              .ExcelFN = "corr_extract_vignette")
+```
+
+![screenshot of default excel output](corr_extract_example.png)
+```{r}
+names(test)
+```
+

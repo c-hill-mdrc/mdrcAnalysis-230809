@@ -1,0 +1,194 @@
+---
+title: "Multi-level Analysis"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Multi-level Analysis}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  # Disabling warnings for demonstration
+  warning = FALSE
+)
+```
+
+```{r setup}
+source("/data/share/xproject/Training/Practice/htet/mdrcAnalysis/inst/inprogress/R/mixed_extract_ben.R")
+library(mdrcAnalysis)
+library(tidyverse)
+# Loading data
+data(Arabidopsis, package = "lme4")
+```
+
+For the purposes of this demonstration, I will be working with the `Pastes` 
+dataset from the `lme4` package:
+```{r}
+head(Arabidopsis)
+```
+
+```{r}
+print(summarytools::dfSummary(
+  x = Arabidopsis,
+  varnumbers = FALSE,
+  valid.col = FALSE,
+  graph.magnif = 0.76,
+  max.distinct.values = 5),
+  method = 'render')
+```
+
+
+
+This dataset gives us the continuous variable `total.fruits`, a by variable
+of `status` and 2 nested grouping levels of `popu` and `gen`.
+
+## Basic Model Specification
+
+`mixed_extract.data.frame` allows you to specify a mixed model in identical fashion to
+how it is specified with `lme4`; however, if you are unfamiliar with this 
+formula structure, you can also explicitly specify a vector of variables to use
+as fixed effects, random slopes, and random intercepts. 
+
+Here we call the extract by explicitly writing the
+right hand side of the formula.
+
+```{r}
+mixed_extract.data.frame(Arabidopsis, "total.fruits", .rhs = "status + (1|gen/popu)")
+```
+
+Here we call the extract by specifying model terms using these arguments. Note
+that we are explicitly passing these as named arguments. See that the extract 
+results are identical. 
+
+```{r}
+mixed_extract.data.frame(Arabidopsis, "total.fruits",
+              .fixed_effects = "status",
+              .random_intercept = "gen/popu")
+```
+
+## Adding a By Group
+
+In both previous specifications, we only added `status` as a fixed effect. If we
+wanted to generate comparisons on this variable, we can just add `status` as the
+grouping parameter:
+```{r}
+mixed_extract.data.frame(Arabidopsis, "total.fruits",
+              .fixed_effects = "status", 
+              .random_intercept = "gen/popu",
+              .by_group = "status")
+```
+This call generates unadjusted means, adjusted means, p-values, and effect sizes 
+for all levels of the `.by_group`. Note that the "reference value" for the 
+`.by_group`; i.e. the the level of the `.by_group` that has an effect size of 0
+is the first factor level of the `.by_group` or, when it is not already assigned
+as a factor, the first value that appears. Make `.by_group` into a factor if you
+want to explicitly change the reference value.
+
+## Testing for Multiple Responses
+
+The primary goal of this function is to simplify the creation of extracts for 
+many response variables at once. Let's add a fake variable to the dataset for 
+the purposes of testing.
+```{r}
+Arabidopsis <- Arabidopsis %>%
+  mutate("total.leaves" = sample(1:20, nrow(Arabidopsis), replace = TRUE))
+```
+
+We can now pass these reponses as a vector and the function will perform the 
+analysis on both and output it as a single dataframe.
+
+```{r}
+mixed_extract.data.frame(Arabidopsis, c("total.fruits", "total.leaves"),
+              .fixed_effects = "status", 
+              .random_intercept = "gen/popu",
+              .by_group = "status")
+```
+
+## Alternative Methods
+
+The other primary goal of this function is to be able to handle cases where a
+mixed model has a singularity. Here we see the current alternate methods that
+are implemented. 
+```{r}
+formals(mixed_extract.data.frame) %>%
+  .$.alternate
+```
+
+"cluster" runs the model as a linear model of fixed effects but with
+clustered standard errors on the highest grouping level. For the reproducible 
+example here, I create what is admittedly a very silly dataframe with 2 response
+variables: `y` and `y1`, a by group: `x` and a grouping level `condition`. 
+
+```{r}
+singular_dataset <- tibble(y = c(4, 7, 4, 7),
+                           y1 = c(4, 4, 7, 7),
+                           x = c(1, 2, 1, 2),
+                           covar = c(1, 2, 3, 4),
+                           condition = c("A", "A", "B", "B"))
+print(singular_dataset)
+```
+
+I then run mixed_extract.data.frame on this data. Note that it automatically uses a 
+clustered linear model for the dependent variable of `y` but uses a mixed model
+for `y1`. This occured because it detected a singularity when attempting to run
+a null model, the mixed model with only random effects.
+
+```{r}
+mixed_extract.data.frame(singular_dataset, c("y", "y1"),
+              .rhs = "covar + x + (1|condition)", 
+              .by_group = "x")
+```
+
+Note here that the by_group comparisons are missing for `y1`. This occurs 
+when the null model does not have a singualrity but a singularity is found when
+running `emmeans` on the full mixed mode. When this occur, the function outputs
+the information it can and then moves onto the next dependent variable. This 
+also occurs if the `.alternate` argument is set to "skip".
+
+### Alternate Method: aggregate
+
+The other alternate method currently implemented is "aggregate". This method is
+used if the dependent variable is a factor or if `.alternate` is set to
+"aggregate. This method works by creating dummy variables of the categorical
+response variable and then aggregating these response variable dummies by mean 
+to the highest grouping level specified in the mixed model. The `.by_group` is 
+made into a dummy variable. An anova comparison is made between a null model
+and an effect model to obtain an effect size. The null model is a linear model
+with the `.by_group` as a dependent variable and the fixed effects as
+independent variables. The effect model also includes the aggregated dummy 
+variables as dependent variables in the model. The effect size and means are 
+calculated using the normal mixed method, or the cluster alternate method if 
+necessary.
+
+For demonstration, we will go back to the `Arabidopsis` dataset but use an 
+explicit factor as our response variable.
+```{r}
+mixed_extract.data.frame(Arabidopsis, c("reg", "total.fruits", "total.leaves"),
+              .fixed_effects = "status", 
+              .random_intercept = "gen/popu",
+              .by_group = "status",
+              .file_path = "../example_extract",
+              .file_name = "mixed_extract.data.frame_example")
+```
+
+Here a p-value is made and presented on the dependent variable as a whole. The 
+effect size and means are given for the dummied variables and the method used
+for these calculations is also listed.
+
+## Support for Multiple Imputations
+
+This function currently supports the use of a multiply imputed dataset (`mids`) 
+as an input instead of a dataframe. This is still a work in progress and there 
+is currently no support for the "Aggregated ANOVA Linear Comparison" alternate
+method for this input type.
+
+## Excel Output
+
+All previous examples were made synthetically to provide reproducible examples 
+you can run. The following output are made using protected data from the VIQI 
+project for the purposes of demonstration.
+
+![screenshot of example excel output](mixed_extract_categorical.png)

@@ -1,0 +1,143 @@
+---
+title: "Exploratory Factor Analysis"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Exploratory Factor Analysis}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup}
+library(mdrcAnalysis)
+library(tidyverse)
+# Loading Big-Five datset from psych
+data(bfi, package = "psychTools")
+```
+
+The bfi dataset contains 25 personality traits on 28000 subjects. These 25 
+traits are organized into 5 putative factors as part of the Synthetic Aperture 
+Personality Assessment. For the purposes of this demonstration, we will be 
+focusing on the first 5 items which represent "Agreeableness". 
+
+## Items of Interest
+
+```{r}
+select(bfi, 1:5) %>%
+  head(10)
+```
+## Process Overview
+
+`efa_extract` starts by identifying and removing collinear response variables. 
+It will then generate and report on Cronbach's coefficient $\alpha$ and perform
+the factor analysis type requested. 
+
+## Default Analyses
+
+First we will try running the `efa_extract` on the bfi dataset and only passing
+the response variables to analyze as an argument. 
+```{r}
+efa_extract(bfi, c("A1", "A2", "A3", "A4", "A5"))
+```
+
+Here we see the defaults used for this extract generation. 
+```{r}
+formals(efa_extract)
+```
+
+`.cor_use` and `cor_method` are used to specify how correlations should be 
+calculated for the purposes of detecting collinearity. These default to 
+`pairwise.complete.obs`and `pearson`, respectively. `cor_limit` is a numeric value
+that sets the upper-bound on correlation before 2 variables are deemed to be 
+collinear, it defaults to 0.8.
+
+`.alpha_keys` can be set identically to the `keys` argument in `psych::alphas`. 
+I would recommend passing a vector of variable names that should be reversed.
+`.alpha_check.keys` is an alternative logical value that will automatically 
+attempt to reverse items with negative loadings.
+
+`.fa_rotate` allow you to specify what type of rotation to perform with your 
+factor analysis. It is important to note that, unlike `psych::fa`, `efa_extract`
+defaults to "varimax" as the rotation method. 
+
+`fa_nfactors` will be discussed in greater depth later. It defaults to "ncol" 
+which is equal to the length of the `.responses` vector passed. In the example
+we just performed, we passed `c("A1", "A2", "A3", "A4", "A5")` as the 
+`.responses` vector so the extract will test for a 5-factor solution. 
+
+`.file_path` and `.file_name` are used to specify where an `.xlsx` file of the 
+extract will be saved to. Although we can see here that some descritpive plots
+and tables are printed into the markdown file and the returned object of the 
+function also contains extractable elements, it is much easier to see all
+results in the workbook.
+
+```{r}
+efa_extract(bfi, c("A1", "A2", "A3", "A4", "A5"),
+            .file_path = "../example_extract",
+            .file_name = "efa_extract_default")
+```
+
+![screenshot of default excel output](efa_extract_default.png)
+
+## Testing Multiple Solutions
+
+One of the primary goals of this function was to simplify testing for multiple
+solutions. Suppose we just want to test for all possible factor solutions of 
+this same item set. We can pass a numeric vector for `.fa_nfactors` to test
+for each of these and the extract function will generate a separate excel sheet
+in the workbook for each number of factors being tested. All other options and
+arguments are preserved between iterations. 
+
+Here we try running this to test on all nfactors from 1 through 5. I will also 
+change some arguments from the default for demonstration.
+
+```{r}
+multiple_solutions <- efa_extract(bfi, c("A1", "A2", "A3", "A4", "A5"),
+                                  .cor_method = "pearson",
+                                  .fa_nfactors = 1:5,
+                                  .fa_rotate = "none")
+```
+
+The returned object is a list of 5 elements, one for each factor solution. The 
+name of each element corresponds to the number of factors extracted. You can see
+here how each component of the analysis results can be extracted by name.
+```{r}
+names(multiple_solutions[["1"]])
+```
+
+Simpler than extracting in R though is just looking at the Excel output. Note 
+that `.cor_limit` is reduced in this example for demonstration purposes.
+```{r}
+efa_extract(bfi, c("A1", "A2", "A3", "A4", "A5"),
+            .cor_method = "pearson", .cor_limit = 0.5,
+            .fa_nfactors = 1:5,
+            .fa_rotate = "none",
+            .file_path = "../example_extract", .file_name = "efa_extract_multiple")
+```
+
+
+![screenshot of default excel output](efa_extract_multiple.png)
+
+Notice that this workbook has 5 sheets of output, one for each factor solution.
+
+## Other Arguments
+
+`efa_extract` does support passing through additional arguments for `psych::fa`.
+If there is a specific `psycha::fa` arugment that you would like to change from 
+the default, pass it as a named argument to `efa_extract`. For example, 
+`psych::fa` default to not imputing missing values. We can change this behavior
+by passing the named argument as such:
+```{r}
+efa_extract(bfi, c("A1", "A2", "A3", "A4", "A5"),
+            missing = TRUE)
+```
+This can be accomplished with any arguments found in `psych::fa`; however, note 
+that this function always passes data as a raw data matrix, not a correlation
+or covariance matrix so arguments pertaining only to a correlation or covariance 
+matrix will be ignored or may cause errors.

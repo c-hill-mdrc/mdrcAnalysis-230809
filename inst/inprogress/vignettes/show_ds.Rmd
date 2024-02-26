@@ -1,0 +1,69 @@
+---
+title: "Datset Summary"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Datset Summary}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup}
+library(mdrcAnalysis)
+library(tidyverse)
+# Loading data
+bif_bl <- readRDS("/data/share/xproject/Training/Data Sources/bif_bl.rds")
+```
+
+For the purposes of this demonstration, I will be using the baseline BIF data
+found in "/Training/Data Sources/bif_bl.rds"
+
+There are many ways people begin looking at a new data source before actually
+processing or cleaning it. `print` or `head` are the most obvious but do not
+always show a representative sample of the data and can be unwieldy with 
+sufficiently many columns. 
+```{r}
+head(bif_bl)
+```
+
+`glimpse` is another frequently used tool and provides some improvements to a 
+normal print by making the output fixed width and also dispalying the types of 
+data. However, it also has the issue of not necessarily showing a the bounds of
+the data.
+
+```{r}
+glimpse(bif_bl)
+```
+
+`show_ds` is designed for use in an R-Studio environment and provides a printout
+summary of data intended to cover most obvious characteristics. It generates and
+prints a tibble with a row for every column in the original dataset and is 
+otherwise option-less because it is intended to be a simple initial summary.
+
+```{r}
+show_ds(bif_bl)
+```
+
+The summary columns are as follows:
+
+* Variable: the name of the column
+* DataType: the result of the the `typeof` call on the column vector
+* DistinctVallues: The number of distinct values, including missings
+* NAValues: The amount of `NA`, or missing values.
+    Does not include `NaN` or `NULL`
+* ValidValues: The amount of non-`NA` values.
+* Mean: The mean value if numeric, `NA` if otherwise.
+* Sum: The sum of all valid values if numeric, `NA` if otherwise.
+* Min: The minimal numeric value, the minimal factor level, or the "1st" value
+    in a typical alphanumeric sort
+* Min: The maximal numeric value, the maximal factor level, or the "last" value
+    in a typical alphanumeric sort
+* Obs: The number of values, equal to the number of rows of the input data.
+* SampleValues: A 20 character subset string concatenation of some values in the
+    original data, delimited by ","

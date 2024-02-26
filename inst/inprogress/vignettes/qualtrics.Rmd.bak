@@ -1,0 +1,135 @@
+---
+title: "qualtricsFedRAMP Basics"
+author: "Benjamin Bui"
+date: "`r Sys.Date()`"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{qualtricsFedRAMP Basics}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r, warning=F, message=F}
+library(tidyverse)
+```
+
+# Motivation
+
+Qualtrics has a package that allows fo easy use of the qualtrics api in R. This ease and flexibility of use is the exact reason why the package is not allowed into the FedRAMP space. Qualtrics does allow for downloading of character and numeric encodings of survey results which is what can be imported into FedRAMP spaces. This package was developed to ease the processing of Qualtrics output, particularly for use with SQL. 
+
+## An Argument Against Characters
+
+Although one could theoretically store the character output from Qualtrics, this has a host of practical issues particularly when working in SQL. For one, verbose labels will stil need to be stored separately as these are not practical to use as variable names in programming. Although the labelled attributed is provided by a few packages, methods for support are sparse and it is not recommended to store labelled data for a host of reasons. SSQL is also not designed around storing very wide files. One can attempt to work around this limitation by changing the datatypes of columns but this has fundamental impacts on the database table and is also not recommended, if even for reasons of efficiency. Numeric data is significantly more space efficient than character data and this doesn't even account for the many mathematical operations we often do on factored data. 
+
+## A Note on Previous Presentations
+
+A version of this package was written and presented on in the past. It is now stored as qualtricsFedRAMP_legacy due to the absxence of a proper vcs in the FedRAMP space. Although much of the base functionality is the same in terms of resulting output, there are significant changes in how programmers use the functions. The code itself has been almost completely refactored to be more readable and efficient. 
+
+# Initial Processing
+
+Loading functions in this package. Note, not formally installing and loading qualtricsFedRAMP as a package as we do not yet have  workflow set up yet for developing, testing, and using internally developed packages in FedRAMP spaces.
+
+```{r}
+source("../R/initial_read.R")
+source("../R/read_dataj.R")
+source("../R/read_meta.R")
+```
+
+Both numeric and character downloads of Qualtrics results typically have > 1 header rows before actual data starts. Displaying just a few columns here.
+```{r, echo = F}
+read.csv("../data/StaffOutreachSurvey.Test.Character.Updated.csv", header = F)[1:10, 1:2]
+```
+
+This example file has 3 header rows. The first row is what we would typically use as the variable name, the second row is the verbose text used to display the Qualtrics survey and the third is the internal id code used by Qualtrics to track questions. The exact number of header rows can vary depending on the options selected when exporting qualtrics data although these first two rows are most important for creating the label database and why just using read.csv or its equivalents is insufficent for dealing with Qualtrics. 
+
+```{r, echo = F, warning=F}
+bind_cols(
+  read.csv("../data/StaffOutreachSurvey.Test.Character.Updated.csv") %>% select(Q18) %>%
+    tail(10),
+  read.csv("../data/StaffOutreachSurvey.Test.Numeric.Updated.csv") %>% select(Q18) %>%
+    tail(10)
+) %>% set_names(c("Character", "Numeric"))
+```
+
+This import process is now simplified into a single function call:
+
+```{r}
+initial_import <- initial_read("../data/StaffOutreachSurvey.Test.Numeric.Updated.csv",
+                  "../data/StaffOutreachSurvey.Test.Character.Updated.csv")
+```
+
+One notable thing this package attempts to do is reorder numeric values to be more in line with standard conventions. Dummy variables in Qualtrics are coded as 1:2 but this function family will recode this to a 0, 1 and attempts to assign this according to the contents of the character value. If the character value contains "negative" values like "no" or "false", this will correspond to the 0 value. It will also attempt to recode numeric scales such that the numeric scale in the character value corresponds to the actual numeric value. This does lead to harmless numeric coercions, particular for numeric scale questions that contain more than 1 value that does not correspond to a numeric value but this numeric coercion can also be disabled by setting the argument ".numcoerce = F". The function will also print a tibble displaying all question where this coercion took place and change a character/numeric mapping. 
+
+```{r}
+head(initial_import[[1]])
+head(initial_import[[2]])
+initial_import[[3]][1:10, 20:21]
+```
+
+`initial_import` returns a list of 3 tibbles. The first element is the variable name to verbose label matching, the second element is the numeric to character factor matching, and the third element is the numeric data with numbers coerced based on the argument value specified above. These 3 tibbles can be uploaded to SQL or saved as an .RData for data processing while also keeping a record of what the data means.
+
+## Subsequent Import
+
+Note that the function above is labelled `qualtrics_initial`. This function is designed to be for the first time you recieve qualtrics survey as it constructs the metadata and delivers the transformed data. It does this by calling 2 subfunctions: `create_meta` and `read_character`. The former reads in the numeric and character file and outputs the label and factor database. The latter function reads in the character file and uses the factor database to create a numeric file with all relevant data manipulations. `create_meta` is appropriate for reading in test files, `qualtrics_intiial` is the best option to read in qualtrics data IF metadata was not created previously and `read_character` is the function to use t read in data when the metdata structures are already created.
+
+Doing this on the previously read data set would use the following process:
+
+Reading in metadata
+```{r}
+metadata.list <- read_meta("../data/StaffOutreachSurvey.Test.Numeric.Updated.csv",
+                  "../data/StaffOutreachSurvey.Test.Character.Updated.csv")
+```
+
+```{r}
+print(head(metadata.list$LabelDatabase))
+```
+
+
+```{r}
+print(head(metadata.list$FactorDatabase))
+```
+
+We can then use this metadata to read in survey results and store it in a space efficient manner.
+
+Compare the actual character data (Note, strings shortened to fit in a page):
+
+```{r}
+read.csv("../data/StaffOutreachSurvey.Test.Character.Updated.csv") %>%
+  tail(-2) %>%
+  .[1:10, 24:31] %>%
+  mutate(across(everything(), ~str_trunc(., 20, "right")))
+```
+
+
+With the same look of numeric, coerced data:
+
+```{r}
+read_data("../data/StaffOutreachSurvey.Test.Character.Updated.csv",
+          metadata.list$FactorDatabase)[1:10, 24:31]
+```
+
+We can also easily access the verbose labels associated with this data:
+
+```{r}
+metadata.list$LabelDatabase %>%
+  filter(str_detect(variable_name, "Q12|Q13")) %>%
+  select(variable_name, variable_label)
+```
+
+And the numeric to character mapping
+
+```{r}
+
+metadata.list$FactorDatabase %>%
+  filter(str_detect(Question, "Q12|Q13")) %>%
+  select(Question, Val)
+```
+
+

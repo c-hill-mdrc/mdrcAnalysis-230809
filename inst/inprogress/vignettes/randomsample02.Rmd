@@ -1,0 +1,78 @@
+---
+title: "Creating Random Samples"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Creating Random Samples}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup}
+library(mdrcAnalysis)
+library(tidyverse)
+# Loading data
+data <- readRDS("/data/share/xproject/Training/Data Sources/bif_bl.rds")
+```
+
+Creating random samples is a fairly common procedure so this function was made 
+help make this process easier and with higher rproducibility.
+
+## Default Behavior
+
+By default, `randomsample02`creates a sample of size 50 with all columns
+included. The seed used is also random but can be explicitly set with `.Seed`
+
+```{r}
+randomsample02(data)
+```
+
+## Function Arguments
+
+The argument `.select_vars` can be used if you want your random sample to be 
+column subset of your starting dataset.
+```{r}
+randomsample02(data,
+               .select_vars = c("SAMPLEID", "blmale", "blfemale"))
+```
+
+The argument `.SampSize` is used to determine the size of the reesulting
+dataset. If the value of `.SampSize` is greater than 1, then it will be used to
+directly determine the resulting size. If it is less than or equal to 1, it is
+treated as a proportion and is equivalent to the closest integer of `.SampSize`
+multiplied by the number of rows of the original data.
+
+```{r}
+# Random sample of size 10
+randomsample02(data, .SampSize = 10)
+```
+
+```{r}
+# Ranndom sample of 1/10 the original size, noting that the original data had 
+# 2575 rows
+randomsample02(data, .SampSize = 0.1)
+```
+
+`.Replacement` defaults to `FALSE` and determines if random samples should be
+taken with replacement. This also enables you to create a sample of greater size
+than the original data.
+```{r}
+randomsample02(data, .SampSize = 3000, .Replacement = TRUE)
+```
+
+You can also group variables by passing a vector of column names to
+`.groupiing_vars`. Note that `.SampSize` works on a PER GROUP basis. For the
+example below, there are 3 distinct values of the `.grouping_vars` variable
+"blmale". Thus, with a `.SampSize` of 10, we expect to get a sample size of 30.
+Using a proportional `.SampSize` also calculates the new integer sample size 
+based on the number of rows in the original data.
+
+```{r}
+randomsample02(data, .grouping_vars = "blmale", .SampSize = 10)
+```

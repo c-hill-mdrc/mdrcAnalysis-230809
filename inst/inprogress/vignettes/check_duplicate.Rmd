@@ -1,0 +1,61 @@
+---
+title: "Checking and Reporting on Duplicates"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Checking and Reporting on Duplicates}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup}
+library(mdrcAnalysis)
+library(tidyverse)
+data <- read_csv(file.path(
+  "/data/share/xproject/Training/Data Sources",
+  "Qualtrics_TestData_210730v2.csv")) %>%
+  tail(-2)
+```
+
+Checking for duplicates is a fairly simple process with tidyverse tools but 
+quantifying and reporting on these duplicates is a more involved process.
+
+`check_duplicate` performs 2 primary actions. It prints a dataframe quantifying
+the amount of duplicates there are in the daata and returns the original 
+dataframe with the duplicated rows flagged.
+
+## Default Behavior
+
+By default, `check_duplicate` only marks rows as duplicates if ALL columns are
+duplicated. This is not particularly useful except in extreme cases. 
+
+You can see here in our data that no rows are duplicated across all columns.
+```{r}
+check_duplicate(data)
+```
+
+## Specifying Groups
+
+If however, we want to determine rows that are duplicated across a subset of 
+columns, we can specify it as such:
+
+```{r}
+flagged_data <- check_duplicate(data, c("Q27", "Q28"))
+```
+
+Here we see a report on each combination of our grouping variables and the 
+frequency that this combination occurs. This also returns an object with a flag
+to allow programmers to easily filter out these duplicated cases.
+
+```{r}
+flagged_data %>% filter(DUPFLAG == 1) %>%
+  select(DUPFLAG, Q27, Q28)
+```
+
+
