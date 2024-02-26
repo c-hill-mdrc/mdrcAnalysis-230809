@@ -1,0 +1,266 @@
+---
+title: "freq_extract: Frequencies"
+author: "Zarni, Melvin, powered by Audrey + Ben's function"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{freq_extract: Frequencies}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  # Disabling warnings for demonstration
+  warning = FALSE
+)
+```
+
+## Overview and Motivation
+
+Producing a simple frequency table in R is a relatively simple task with many
+different easy implementations. This function is not intended to replace simple
+data checks like using `dplyr::count` or `janitor::tabyl`, rather it:
+
+* simplifies running frequencies for many variables,
+* generates output columns that we commonly review and include in MDRC tables,
+* provides for common MDRC needs like counts of sub-groups, weighting, and more.
+
+## Sample Data
+
+It is the year 2050. The AI revolution is almost complete. Troves of workers across sectors & educational qualifications have been unemployed. The federal government along with the premier research agency, MDRC, is partnering to evaluate job retraining programs and determine whether the specialized empathy & listening training (treatment) increases the chance of people being employed in new human care industries that have cropped up. An initial trial has been conducted across 5 cities in multiple sites with 1-25 individuals in each training site.
+
+The initial simulated data set is a 3 level structure data set consisting of
+
+* **City** - 5 Cities with population between 1,000 and 2,000
+
+* **Sites** - Within each city, there are between 1-10 job training centers
+
+* **Individuals** - Within each job training center, there are 1-25 individuals
+
+We have also added random missing values to our simulated data to test how our function fares with it.
+
+
+```{r}
+library(mdrcAnalysis)
+library(dplyr)
+
+#load the data sets
+data("sim_data")
+data("sim_three_levels_missing")
+
+```
+
+Here are the first few rows of our simulated data:
+
+```{r}
+head(sim_data)
+```
+
+And the data with random missing values:
+
+```{r}
+head(sim_three_levels_missing)
+```
+
+
+## About the Function 
+
+The freq_extract macros uses dplyr::summarise() to display a one-way frequency for one or more variables. Additional columns like cumulative frequency, percent, and cumulative percent are included in the output.
+
+The input to the function is a data frame (and usually a list of variables). The output is a data frame with the frequencies for each variable and optionally, an excel spreadsheet with the same information.
+
+Frequencies are ideal for categorical variables, but can be used for continuous variables. However, the `.max_lvls` argument should be used if the variables are not specified with `freq_vars` to keep from generating excessive amounts of output.
+
+There are also arguments for weighting and handling missing values.
+
+## Function Call Examples
+
+In this section, we are going to walk you through a couple of different scenarios using the __freq_extract__ function.
+
+Each section has a brief explanation what function arguments are being used, along with
+a example/unit test to validate that the function is working as it should!
+
+### Distribution of 2 Categorical Variables
+
+If you want to check the distribution of your categorical variables without any further grouping,
+this example is the one for you!
+
+Here, we are looking at the simulated data's gender and child's distribution.
+
+* For gender, we can see that type 1 is the majority at __63__ percent and type 2 is at __37__ percent.
+* For number of children, it looks __2__ is the most popular decision with 43 percent of all parents opting for it. There are a number of parents with __5__ kids! That must be a handful!
+
+As you may have inferred, the output columns are:
+
+* **Unique_ID:** It combines the name of the variable and its value.
+* **Variable:** The variable name.
+* **Value:** The value of the variable.
+* **Freq:** The raw count of observations that match the value.
+* **CFreq:** The cumulative count of observations for that variable. Note that in gender:0 (121) + gender:1 (202) sums up to 323 in CFreq.
+* **Pct:** The percent of observations that match the value.
+* **CPct:** The cumulative percent of observations for that variable. Same logic as the **CFreq**.
+
+```{r twoCatsDs}
+twoCatsDs <- freq_extract(
+                      .dataset = sim_data, # data set you have loaded above
+                      .freq_vars = c("gender", "numChild"), # categorical variables you want to calculate a frequency distribution 
+                      .round = 0) # rounding for percentage estimation
+twoCatsDs
+```
+
+### Distribution of 2 Categorical Variables (Decimals)
+
+If you want decimals in your percentage, adjust the `.round` argument.
+
+```{r twoCatsDsDecimals}
+twoCatsDsDecis <- freq_extract(
+                      .dataset = sim_data, # data set you have loaded above
+                      .freq_vars = c("gender", "numChild"), # categorical variables you want to calculate a frequency distribution 
+                      .round = 2) # rounding for percentage estimation
+twoCatsDsDecis
+```
+
+
+### Distribution of 2 Categorical Variables within a Group (i.e. Cities)
+
+What if you want to check out the distribution by a subgroup of interest? You can
+add in another argument - `.subgroup` and specify your subgroup of interest.
+
+Below, we have put in Cities as a subgroup to unpack the gender distribution and
+number of children in each city.
+
+Notes that in the output, there is an additional number at the start of the _Unique_ID_ to indicate the city. And another column called _Subgrp_value_.
+
+```{r}
+twoCatsWGroupDsDecis <- freq_extract(
+                      .dataset = sim_data, # data set you have loaded above
+                      .freq_vars = c("gender", "numChild"), # categorical variables you want to calculate a frequency distribution 
+                      .subgroup = c("cities"), # the subgroup by which we want to divide by 
+                      .round = 2) # rounding for percentage estimation
+
+twoCatsWGroupDsDecis <-
+  twoCatsWGroupDsDecis %>%
+  dplyr::arrange(Unique_ID) # sorting output by Unique_ID
+
+head(twoCatsWGroupDsDecis, n = nrow(twoCatsWGroupDsDecis))
+```
+
+### Distribution of a Continuous Variable
+
+What if you have a continuous variable you would like to check its distribution?
+Usually, the distribution of continuous variables are checked through density plots, but continuous variables can also have discrete values within them.
+
+If you want to know how often discrete values occur throughout the data set, 
+you can supply the continuous variable to the `.freq_vars` parameter as shown below. 
+
+```{r}
+# Example 1
+contDsDecis01 <- freq_extract(
+                      .dataset = sim_data, # data set you have loaded above
+                      .freq_vars = c("population", "numChild"), # categorical variables you want to calculate a frequency distribution 
+                      .round = 2) # rounding for percentage estimation
+contDsDecis01
+```
+
+However, if you didn't specify variables in freq_vars, you could use `.max_lvls` to display all the variables with `.max_lvls` number of discrete values or fewer. The example below sets `.max_lvls` to 4, so numChild and population are no longer in the output, but variables with 4 or fewer categories are. This is a good way to get a freq of all variables, except those with many distinct values.
+
+
+```{r}
+# Example 2
+contDsDecis03 <- freq_extract(
+                      .dataset = sim_data, # data set you have loaded above
+                      .max_lvls = 4, # maximum number of expected levels
+                      .round = 2) # rounding for percentage estimation
+
+head(contDsDecis03, n=15)
+```
+
+### Distribution of 2 Categorical Variables with Weights
+
+Previously , we have equal weighting for all observations.
+gender:1 is predominant in the distrbution at __63__ percent and gender:0 is at __37__.
+
+In some cases, we'll want to weight certain observations and we'll have a variable in the data that indicates the weight of each observation. 
+
+As an example, we'll create a weight variable called *genWeight* that provides a weighting of 2 if the gender is 0, and 1 if the gender is not 0. 
+
+```{r}
+sim_data_weighted <-
+  sim_data %>%
+  dplyr::mutate(genWeight =
+                  ifelse(gender %in% c(0), 2, 1)) #create weight variable
+
+head(sim_data_weighted)
+
+```
+
+To use this new weight variable with __freq_extract__, we pass the new weight variable to the `.wt_var` argument.
+
+In the output, there will be 4 additional columns for the weighted frequency, weighted cumulative frequency, weighted percentage and weighted cumulative percentage.
+
+
+```{r}
+twoCatsDsWeighted <- freq_extract(
+                      .dataset = sim_data_weighted, # data set you have loaded above
+                      .freq_vars = c("gender", "numChild"), # categorical variables you want to calculate a frequency distribution    
+                      .wt_var = "genWeight", 
+                      .max_lvls = 10, # maximum number of expected levels
+                      .round = 2) # rounding for percentage estimation
+twoCatsDsWeighted
+```
+
+### Missing Values
+
+If we use the data set that include missing values, we can see how the `.na_rm` argument works. By default, `.na_rm` is FALSE, which means that a rows for missing values will be displayed and the cumulative frequency and percentage will include missing observations.
+
+```{r}
+nonMissingDataSet <-
+  freq_extract(.dataset = sim_three_levels_missing, # data set you have loaded above
+               .freq_vars = c("numChild"), # categorical variables you want to calculate a frequency distribution    
+               .max_lvls = 10, # maximum number of expected levels
+               .round = 2)
+
+head(nonMissingDataSet)
+
+```
+
+If `.na_rm` is set to TRUE, there is still a row that shows how many missing there are for a given variable, but there are also additional columns that start the Nm_. The _Nm_CFreq_ and _Nm_Pct_ values are different than _CFreq_ and _Pct_ because they do not count the missing rows.
+
+```{r}
+missingDataSet <-
+  freq_extract(.dataset = sim_three_levels_missing, # data set you have loaded above
+               .freq_vars = c("numChild"),    
+               .max_lvls = 10, 
+               .na_rm = TRUE,
+               .round = 2)
+head(missingDataSet)
+
+```
+
+### All Tied into One
+
+Finally, here is an example that uses multiple variables, a weight variable, extra counts/percentages that exclude missings, rounding, and an excel output file.
+
+
+```{r include=FALSE}
+sim_three_levels_missing_weighted <- 
+  sim_three_levels_missing %>%
+    dplyr::mutate(genWeight =
+                  ifelse(gender %in% c(0), 2, 1))
+```
+
+```{r, eval=FALSE}
+twoCatsOneContsDsWeightedMissing <- freq_extract(
+                      .dataset = sim_three_levels_missing_weighted, # data set you have loaded above
+                      .freq_vars = c("gender", "numChild", "population"), # categorical variables you want to calculate a frequency distribution
+                      .wt_var = "genWeight",
+                      .na_rm = TRUE,
+                      .max_lvls = 2, # maximum number of expected levels
+                      .round = 2,
+                      .output_file = "freq_extract_example",
+                      .output_path = "../example_extract") # rounding for percentage estimation
+twoCatsOneContsDsWeightedMissing
+```

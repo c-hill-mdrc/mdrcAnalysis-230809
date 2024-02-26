@@ -1,0 +1,77 @@
+---
+title: "mean_extract: Summary statistics"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{mean_extract: Summary statistics}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+### Set Up
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  # Disabling warnings for demonstration
+  warning = FALSE
+)
+```
+
+```{r setup}
+library(mdrcAnalysis)
+```
+
+### Simulated data
+
+It is the year 2050. The AI revolution is almost complete. Troves of workers across sectors & educational qualifications have been unemployed. The federal government along with the premier research agency, mdrc is partnering to evaluate job retraining programs and whether the specialized empathy & listening training (treatment) increases the chance of people being employed in new human care industries that have propped up. An initial trial has been conducted across 5 cities in multiple sites with 1-25 individuals in each training site.
+
+The initial simulated data set is a 3 level data structure consisting of
+
+* **City** - 5 Cities with population between 1,000 and 2,000
+* **Sites** - Within each city, there are between 1-10 job training centers
+* **Individuals** - Within each job training center, there are 1-25 trainees/individuals
+
+Additionally, we are assuming that people with prior higher education has higher prior income
+and have put a correlation structure around it. 
+Furthermore, we think that married and single people live in distinct clusters within this data set. 
+In our example below, we have set the clustering at the sites level.
+
+```{r}
+data(sim_data_robust_reg)
+head(sim_data_robust_reg)
+```
+
+## Minimum Arguments
+
+`mean_extract` requires that you pass it the data set and the treatment variable, it will return a 5 number summary along with missing values count and standard deviation for all the observations whose treatment status is not missing.
+
+```{r}
+mean_extract(
+    .dataset = sim_data_robust_reg
+)
+```
+
+## Subgroup
+
+You can also specify __subgroup__ to get where metrics of different groups.
+
+```{r}
+mean_extract(
+    .dataset = sim_data_robust_reg,
+    .subgroup = "treatment"
+)
+```
+
+## Quantiles
+
+You can also set `quantile = TRUE` to get quantile cuts.
+
+```{r}
+mean_extract(
+    .dataset = sim_data_robust_reg,
+    .subgroup = "treatment",
+    .quantile = TRUE
+)
+```
+

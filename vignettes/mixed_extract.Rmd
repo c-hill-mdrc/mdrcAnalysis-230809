@@ -1,0 +1,498 @@
+---
+title: "mixed_extract: Mixed Effects Models"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{mixed_extract: Mixed Effects Models}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+# To-dos
+* Check if the numbers match up with SAS
+* Check what is going on with the subgroup effect
+
+### Set Up
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  # Disabling warnings for demonstration
+  warning = FALSE
+)
+```
+
+```{r setup}
+library(dplyr)
+library(mdrcAnalysis)
+library(lme4)
+library(mlmRev) # for mlm data sets
+
+# Loading data
+data(Exam, package = "mlmRev")
+```
+
+For the purposes of this demonstration, we will be working with the `Exam` 
+dataset from the `mlmRev` package. The `mlmRev` package specifically has a collection of multi-level data sets.
+
+The Exam data set has __4059__ observations on the following 9 variables.
+
+* **school** - School ID - a factor
+* **normexam** - Normalized exam score
+* **schgend** - School gender - a factor. Levels are mixed, boys and girls.
+* **schavg** - School average of intake score.
+* **vr** - Student Verbal Reasoning (VR) score band at intake - a factor. Levels are bottom 25%, mid 50% and top 25%.
+* **intake** - Band of student's intake score - a factor. Levels are bottom 25%, mid 50% and top 25%.
+* **standLRT** - Standardized LR test score.
+* **sex** - Sex of the student - levels are F and M.
+* **type** - School type - levels are Mxd and Sngl.
+* **student** - Student id (within school) - a factor
+
+```{r}
+head(Exam)
+```
+
+```{r}
+summary(Exam)
+```
+
+This dataset gives us the continuous variable `standLRT`, a by variable
+of `type`, `schgend` and grouping level of `school`.
+
+## Why Multilevel Models?
+
+There are a number of reasons for using multilevel models:
+
+**Correct inferences:** 
+Traditional multiple regression techniques treat the units of analysis as independent observations. One consequence of failing to recognise hierarchical structures is that standard errors of regression coefficients will be underestimated, leading to an overstatement of statistical significance. Standard errors for the coefficients of higher-level predictor variables will be the most affected by ignoring grouping.
+
+**Substantive interest in group effects:** 
+In many situations a key research question concerns the extent of grouping in individual outcomes, and the identification of ‘outlying’ groups. In evaluations of school performance, for example, interest centres on obtaining ‘value-added’ school effects on pupil attainment. Such effects correspond to school-level residuals in a multilevel model which adjusts for prior attainment.
+
+**Estimating group effects simultaneously with the effects of group-level predictors:** 
+An alternative way to allow for group effects is to include dummy variables for groups in a traditional (ordinary least squares) regression model. Such a model is called an analysis of variance or fixed effects model. In many cases there will be predictors defined at the group level, eg type of school (mixed vs. single sex). In a fixed effects model, the effects of group-level predictors are confounded with the effects of the group dummies, ie it is not possible to separate out effects due to observed and unobserved group characteristics. In a multilevel (random effects) model, the effects of both types of variable can be estimated.
+
+**Inference to a population of groups:** 
+In a multilevel model the groups in the sample are treated as a random sample from a population of groups. Using a fixed effects model, inferences cannot be made beyond the groups in the sample.
+
+*Reference:*
+
+(http://www.bristol.ac.uk/cmm/learning/multilevel-models/what-why.html#:~:text=In%20a%20fixed%20effects%20model,of%20variable%20can%20be%20estimated.)[http://www.bristol.ac.uk/cmm/learning/multilevel-models/what-why.html#:~:text=In%20a%20fixed%20effects%20model,of%20variable%20can%20be%20estimated.]
+
+## How we use multilevel at mdrc
+
+@Melvin
+
+
+
+## Purpose of this Markdown
+
+The purpose of this markdown is four folds.
+
+First, we would like to provide a primer to our analysts on different multilevel models starting with
+
+* the null model
+* random intercept and fixed predictor model
+* random intercept and random slope model
+* random intercept, individual and group level predictor
+* **fixed intercept**
+
+**ZH Note**: Each of the successive models should be tested using likelihood ratio tests to check for statistical significance
+of the grouping variable terms. I am unsure however, how this will be integrated to treatment effect runs.
+
+(Testing Significance of Mixed Effects Model)[https://www.ssc.wisc.edu/sscc/pubs/MM/MM_TestEffects.html]
+
+Second, we would provide some examples of how to produce the above different mlm models across 
+multiple dependent variables using our internal function.
+
+Third, we would use a fixed effect predictor with group levels to make group level comparison effects.
+
+Last but not least, we would provide some examples where multi-level models do not __converge__ OR is __singular__.
+In either case, we would be running cluster or aggregate models.
+
+**ZH Note**: Ben's current function is checking only singular case and not convergence.
+Please check line 115 - lme4::isSingular.
+
+Singularity checks the goodness of model estimates affected by the rank of variance-covariance matrix (multicollinearity, overfitting etc)
+Convergence is the numerical optimizer (maximum likelihood estimator or REML) not reaching a stable estimate through multiple iterations.
+
+If we want to check both or either, the code needs to be modified here. This check redirects the function run
+to either a clustered linear model or an aggregate linear model.
+
+**Reference:**
+
+(Singularity)[https://easystats.github.io/performance/reference/check_singularity.html#:~:text=If%20a%20model%20is%20%22singular,with%20complex%20random%20effects%20structures]
+
+(Convergence)[https://easystats.github.io/performance/reference/check_convergence.html]
+
+## Fixed vs Random effects
+
+**ZH Note**: 
+Melvin, should we have a primer on this? There are so many different definitions of random effects.
+I wonder if mdrc has a primer here that we can plug it in.
+
+## Formula Notations
+
+**ZH Note**: 
+
+Melvin, should we insert these formula notations now or is a reference sufficient?
+
+Before we go into multilevel models, table 9.1 has formula notations for random effects.
+(https://mspeekenbrink.github.io/sdam-r-companion/linear-mixed-effects-models.html)
+[https://mspeekenbrink.github.io/sdam-r-companion/linear-mixed-effects-models.html]
+
+## Adding Treatment Status to Exam data set
+
+To make our data set similar to data sets seen by our analysts, we are adding a treatment status
+by school and student level with a probability of 50% for getting treated or not.
+
+Since the treatment status is being added to the data without any connection with the data generation process,
+any effect you see is a random fluke as we expect no actual effect on the outcome.
+
+```{r}
+# adding treatment status to the exam data frame
+seed <- set.seed(1)
+Exam <-
+  Exam %>%
+    dplyr::group_by(school, student) %>%
+    dplyr::mutate(
+      treatment = factor(sample(c(0,1), 1, prob = c(0.5, 0.5))) 
+    ) %>%
+  dplyr::ungroup()
+```
+
+```{r}
+# checking the modified exam data set
+Exam %>%
+  dplyr::count(school, treatment) 
+```
+
+# Section 1
+
+
+## Null Model Specification
+
+### Straight from lmer
+
+**ZH Note**: When we use `broom.mixed::tidy()`, it's only returning standard deviation and not variance estimates. 
+Is that sufficient?
+
+```{r}
+mod1 <- lmer(normexam ~ (1|school), data = Exam)
+```
+
+```{r}
+summary(mod1)
+print(mod1)
+```
+
+
+```{r}
+mod1 %>%
+  broom.mixed::tidy()
+```
+
+### From mixed extract data frame
+
+```{r}
+mixed_extract(.dataset = Exam,
+                         .dependent = "normexam", 
+                         .rhs = "1 + (1|school)")
+```
+
+
+
+```{r, eval = FALSE}
+Exam %>% 
+    # save predicted values
+    dplyr::mutate(pred_normexam = fitted(mod1)) %>% 
+    # graph
+    ggplot2::ggplot(ggplot2::aes(x=standLRT, y=pred_normexam, group=school, color=school)) + ggplot2::theme_classic() +
+    ggplot2::geom_line(size=1) 
+```
+
+## Random Intercept and Fixed Predictor Model
+
+
+
+### Replicating SAS 1 (ZH: Is this the mixedmodels.xlsx)
+
+proc mixed data=Exam covtest ic method=reml ;
+class treatment school ;
+Model normexam = treatment  ;
+random school;	
+lsmeans treatment /pdiff=all;
+run;
+
+```{r}
+mod2 <- lmer(normexam ~ treatment + (1|school), data = Exam)
+```
+
+```{r}
+summary(mod2)
+print(mod2)
+fixef(mod2)
+```
+
+```{r, eval=FALSE}
+normExamMixed <-
+  mixed_extract(.dataset = Exam,
+                           .dependents = "normexam",
+                           .rhs = "treatment + (1 | school)",
+                           .treatment = "treatment")
+```
+
+```{r, eval=FALSE}
+head(normExamMixed)
+```
+
+```{r, eval=FALSE}
+Exam %>% 
+    # save predicted values
+    mutate(pred_normexam = fitted(mod2)) %>% 
+    # graph
+    ggplot(aes(x=standLRT, y= pred_normexam, group=school, color=school)) + theme_classic() +
+    geom_line(size=1) 
+```
+
+## Random Intercept and Random Slope Model
+
+```{r, eval=FALSE}
+mod3 <- lmer(normexam ~ treatment + (standLRT|school), data = Exam)
+```
+
+```{r, eval=FALSE}
+summary(mod3)
+```
+
+```{r, eval=FALSE}
+mixed_extract.data.frame(.dataset = Exam,
+                         .dependents = "normexam",
+                         .rhs = "treatment + (standLRT | school)")
+```
+
+**ZH Note:** MG, if you specify treatment, it will return only the treatment related effect which is all we want I think.
+
+```{r, eval=FALSE}
+mixed_extract.data.frame(.dataset = Exam,
+                         .dependents = "normexam",
+                         .rhs = "treatment + (standLRT | school)",
+                         .treatment = "treatment")
+```
+
+
+```{r, eval=FALSE}
+Exam %>% 
+    # save predicted values
+    mutate(pred_normexam = fitted(mod3)) %>% 
+    # graph
+    ggplot(aes(x=standLRT, y= pred_normexam, group=school, color=school)) + theme_classic() +
+    geom_line(size=1) 
+```
+
+## Random Intercept, individual and group level predictor
+
+```{r, eval=FALSE}
+mod4 <- lmer(normexam ~ treatment + schavg + (standLRT|school), data = Exam)
+```
+
+
+```{r, eval=FALSE}
+lme4::fixef(mod4)
+```
+
+```{r, eval=FALSE}
+print(mod4)
+```
+
+```{r, eval=FALSE}
+summary(mod4)
+```
+
+```{r, eval=FALSE}
+mixed_extract.data.frame(.dataset = Exam,
+                         .dependents = "normexam",
+                         .rhs = "treatment + schavg + (standLRT | school)")
+```
+
+```{r, eval=FALSE}
+mixed_extract.data.frame(.dataset = Exam,
+                         .dependents = "normexam",
+                         .rhs = "treatment + schavg + (standLRT | school)",
+                         .treatment = "treatment")
+```
+
+
+
+```{r, eval=FALSE}
+Exam %>% 
+    # save predicted values
+    mutate(pred_normexam = fitted(mod4)) %>% 
+    # graph
+    ggplot(aes(x=standLRT, y= pred_normexam, group=school, color=school)) + theme_classic() +
+    geom_line(size=1) 
+```
+
+# Section 2
+
+The primary goal of this section is to demonstrate that the function can 
+simplify the creation of extracts for  many response variables at once. 
+Let's add a fake variable to the dataset for the purposes of testing.
+
+```{r, eval=FALSE}
+Exam <- Exam %>%
+  dplyr::mutate("denormExam" = normexam - 1)
+```
+
+We can now pass these responses as a vector and the function will perform the 
+analysis on both and output it as a single data frame.
+
+```{r, eval=FALSE}
+mixed_extract.data.frame(Exam, 
+              .dependents = c("normexam", "denormExam"),
+              .rhs = "treatment + schavg + schgend + (standLRT | school)")
+```
+
+```{r, eval=FALSE}
+mixed_extract.data.frame(Exam, 
+              .dependents = c("normexam", "denormExam"),
+              .rhs = "treatment + schavg + schgend + (standLRT | school)",
+              .treatment = "treatment")
+```
+
+
+# Section 3
+
+**ZH:** Clarify how the reference level is calculated and what is the meaning of EMMEANS calculation here.
+**ZH:** Check what is going on with the subgroup effect here?
+ 3 way design is what we need to take care of!
+
+## Adding a By Group
+
+In both previous specifications, we only added `status` as a fixed effect. If we
+wanted to generate comparisons on this variable, we can just add `status` as the
+grouping parameter:
+
+```{r, eval=FALSE}
+mixed_extract.data.frame(Exam, 
+              .dependents = "normexam",
+              .rhs = "treatment + schavg + schgend + (standLRT | school)",
+              .treatment = "treatment")
+```
+
+This call generates unadjusted means, adjusted means, p-values, and effect sizes 
+for all levels of the `.by_group`. Note that the "reference value" for the 
+`.by_group`; i.e. the the level of the `.by_group` that has an effect size of 0
+is the first factor level of the `.by_group` or, when it is not already assigned
+as a factor, the first value that appears. Make `.by_group` into a factor if you
+want to explicitly change the reference value.
+
+### Save the data
+
+```{r, eval=FALSE}
+write.csv(Exam, file = "~/FunctionRepos/mdrcAnalysis/tests/testthat/sas_tests/Exam.csv")
+```
+
+
+## Imputation
+
+This function currently supports the use of a multiply imputed dataset (`mids`) 
+as an input instead of a dataframe. This is still a work in progress and there 
+is currently no support for the "Aggregated ANOVA Linear Comparison" alternate
+method for this input type.
+
+## Excel Output
+
+All previous examples were made synthetically to provide reproducible examples 
+you can run. The following output are made using protected data from the VIQI 
+project for the purposes of demonstration.
+
+![screenshot of example excel output](mixed_extract_categorical.png)
+
+
+## Appendix
+
+#### In Progress
+
+<!-- # Section 4 -->
+
+<!-- **ZH Note:** How do we set the alternative method? -->
+<!-- **ZH Note:** I thought singularity would be to test if the predictors have multicollinearity. -->
+<!-- In the toy example below, I am not necessarily seeing singularity. -->
+
+<!-- The other primary goal of this function is to be able to handle cases where a -->
+<!-- mixed model has a singularity. Here we see the current alternate methods that -->
+<!-- are implemented.  -->
+
+<!-- ```{r} -->
+<!-- formals(mixed_extract.data.frame) %>% -->
+<!--   .$.alternate -->
+<!-- ``` -->
+
+<!-- "cluster" runs the model as a linear model of fixed effects but with -->
+<!-- clustered standard errors on the highest grouping level. For the reproducible  -->
+<!-- example here, I create what is admittedly a very silly dataframe with 2 response -->
+<!-- variables: `y` and `y1`, a by group: `x` and a grouping level `condition`.  -->
+
+<!-- ```{r} -->
+<!-- singular_dataset <- tibble(y = c(4, 7, 4, 7), -->
+<!--                            y1 = c(4, 4, 7, 7), -->
+<!--                            x = c(1, 2, 1, 2), -->
+<!--                            covar = c(1, 2, 3, 4), -->
+<!--                            condition = c("A", "A", "B", "B")) -->
+<!-- print(singular_dataset) -->
+<!-- ``` -->
+
+<!-- I then run mixed_extract.data.frame on this data. Note that it automatically uses a  -->
+<!-- clustered linear model for the dependent variable of `y` but uses a mixed model -->
+<!-- for `y1`. This occured because it detected a singularity when attempting to run -->
+<!-- a null model, the mixed model with only random effects. -->
+
+<!-- ```{r} -->
+<!-- mixed_extract.data.frame(singular_dataset, c("y", "y1"), -->
+<!--               .rhs = "covar + x + (1|condition)",  -->
+<!--               .subgroup = "x") -->
+<!-- ``` -->
+
+<!-- Note here that the by_group comparisons are missing for `y1`. This occurs  -->
+<!-- when the null model does not have a singualrity but a singularity is found when -->
+<!-- running `emmeans` on the full mixed mode. When this occur, the function outputs -->
+<!-- the information it can and then moves onto the next dependent variable. This  -->
+<!-- also occurs if the `.alternate` argument is set to "skip". -->
+
+<!-- **ZH NOTE:** DO NOT UNDERSTAND THE LANGUAGE!! -->
+
+<!-- The other alternate method currently implemented is "aggregate". This method is -->
+<!-- used if the dependent variable is a factor or if `.alternate` is set to -->
+<!-- "aggregate. This method works by creating dummy variables of the categorical -->
+<!-- response variable and then aggregating these response variable dummies by mean  -->
+<!-- to the highest grouping level specified in the mixed model. The `.by_group` is  -->
+<!-- made into a dummy variable. An anova comparison is made between a null model -->
+<!-- and an effect model to obtain an effect size. The null model is a linear model -->
+<!-- with the `.by_group` as a dependent variable and the fixed effects as -->
+<!-- independent variables. The effect model also includes the aggregated dummy  -->
+<!-- variables as dependent variables in the model. The effect size and means are  -->
+<!-- calculated using the normal mixed method, or the cluster alternate method if  -->
+<!-- necessary. -->
+
+<!-- For demonstration, we will go back to the `Exam` dataset but create and  -->
+<!-- include explicit factor as our response variable -->
+
+<!-- ```{r} -->
+<!-- Exam <- Exam %>% -->
+<!--   dplyr::mutate(passFail = as.factor(ifelse(normexam > 0 , 1, 0))) -->
+<!-- ``` -->
+
+<!-- ```{r} -->
+<!-- mixed_extract.data.frame( -->
+<!--   .dataset = Exam, -->
+<!--   .dependents = c("passFail", "normexam"), -->
+<!--   .rhs = "treatment + schavg + schgend + (standLRT | school)", -->
+<!--   .subgroup = "schgend") -->
+<!-- ``` -->
+
+<!-- Here a p-value is made and presented on the dependent variable as a whole. The  -->
+<!-- effect size and means are given for the dummied variables and the method used -->
+<!-- for these calculations is also listed. -->
+
+

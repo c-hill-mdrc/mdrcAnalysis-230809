@@ -1,0 +1,272 @@
+---
+title: "corr_extract: Correlations"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{corr_extract: Correlations}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup, include = FALSE}
+library(mdrcAnalysis)
+library(dplyr)
+```
+
+## Overview
+
+`corr_extract` simplifies the creations of correlations and generates a formatted Excel
+workbook summarizing the results. The correlation values are driven by
+`psych::corr.test()` which is in turn driven by `stats::cor`. The function also allows for
+the calculation and display of Cronbach Alphas using `psych::alpha`.
+
+## Arguments
+
+- `.dataset` Input tibble containing the data you wish to make an extract on
+
+- `.vars` Character vector of variables to correlate. Will default to all numeric 
+variables in `.dataset` that are not specified in `with_var` or `.by_x`
+
+- `with_vars` Optional vector of variables to correlate against `.vars`. Intuitively,
+these are the "rows" of the correlation matrix output. If unspecified, the correlation
+matrix will be "square" on `.vars`.
+
+- `.by_x` Optional string specifying variable to "split" data by. Split data is 
+exported in different sheets in the output Excel workbook if exporting.
+
+- `.impute` Logical specifying if mean imputation should be done before calculating
+correlations. Defaults to `FALSE`
+
+- `.method` Method for calculating correlations, must be one of:
+  + "pearson" (Default)
+  
+  + "spearman"
+  
+  + "kendall"
+  
+- `.use` Method for handling missing data, must be one of:
+  + "pairwise.complete.obs" (Default)
+  + "all.obs"
+  + "complete.obs"
+  + "everything"
+  + "na.or.complete"
+  
+  Note that you may be used to just typing in "pairwise" or "complete" when calling a
+  correlation. This **IS** supported via partial matching of strings and in fact, 
+  `stats::cor()` also uses the full names listed above. 
+  
+- `.round` Digits to round values to. Does **NOT** apply to alphas or any univariates
+specified in `.stats`. Set to `NULL` if "exact" values are desired. Defaults to 4.
+- `.stats` Character vector of univariate statistics to calculate and output. Can
+contain any of the following:
+  + "mean"
+  
+  + "min"
+  
+  + "max"
+  
+  + "n"
+  
+  + "sd"
+  
+  + "sum"
+  
+  Defaults to "mean".
+  
+- `.prob` Logical determining if t-test probabilty will be displayed. Calculated using
+$\alpha = 0.05$. Defaults to `TRUE`
+
+- `.nobs` Logical determining if number of observations is displayed. Defaults to `TRUE`.
+
+- `.alpha` Logical determining if Cronbach alphas will be calculated. Defaults to `TRUE`.
+
+- `.plot` Logical determining if Correlation plot will be added to Excel output.
+Plot will be inserted into another sheet.
+
+- `.output_path` Optional string specifying path of output excel document. If
+unspecified but `.output_file` is provided, set to working directory.
+
+- `.output_file` Optional string specifying name of output excel document.
+
+- `.warnings` Logical determining if warnings will be printed and displayed on run.
+Primarily used when knitting. Defaults to `TRUE`
+
+## Usage
+
+Using simulated data for demonstration.
+```{r}
+data("sim_data_robust_reg")
+```
+
+```{r}
+# converting to numeric from character to run correlation
+sim_data_robust_reg$individuals <- as.numeric(sim_data_robust_reg$individuals)
+```
+
+### Default Call
+`corr_extract` will create correlations on **ALL** numeric variables if it is just called
+on the dataset as such:
+
+```{r}
+corr_extract(sim_data_robust_reg)
+```
+
+Note that the correlations, probability, and number of observations is listed in a
+separate row for each pairwise combination of variables. Also note that the Cronbach
+Alphas are also displayed as columns but that the total alphas are constant across rows.
+
+### Specifying Variables
+
+You can think of `.vars` as the parameter specifying the "columns" of the correlation
+matrix. If explicitly set, it will fail to run if any non-numeric columns are included.
+
+Here individuals is a column of character values.
+```{r, error = TRUE}
+corr_extract(sim_data_robust_reg, .vars = c("cities", "individuals"))
+```
+
+Here, every `.vars` specified is numeric.
+```{r}
+corr_extract(sim_data_robust_reg, .vars = c("age_raw", "eduLevel"))
+```
+
+`.with_vars` is used if you want the "rows" of the correlation matrix to differ from the
+"columns". `.with_vars` must also be numeric.
+
+Here, the columns of the correlation matrix are "age_raw" and "eduLevel" and the rows
+are "gender" and "numChild"
+```{r}
+corr_extract(sim_data_robust_reg,
+             .vars = c("age_raw", "eduLevel"),
+             .with_vars = c("gender", "numChild"))
+```
+
+If a variable is mistakenly added to both `.vars` and `.with_vars`, its placement in 
+`.vars` is preferred.
+
+```{r}
+corr_extract(sim_data_robust_reg,
+             .vars = c("age_raw", "eduLevel"),
+             .with_vars = c("gender", "age_raw"))
+```
+
+`.by_x` effectively performs `corr_extract` on each dataframe split by the values of the
+variable specified in `by_x`. Although `.by_x` can refer to any column, it is generally
+recommended that it is used on factor or character variables.
+
+See below that `.by_x` is set to "sites". This creates a new column called "sites"
+that contains the current value of "sites" that the correlation result is filtered for.
+```{r}
+corr_extract(sim_data_robust_reg,
+             .vars = c("age_raw", "eduLevel"),
+             .with_vars = c("gender"),
+             .by_x = "treatment")
+```
+
+
+### Handling Missing Values
+
+If you want to replace missing values with the mean value of their column, set `.impute`
+to `TRUE`.
+
+```{r}
+# Creating data every 3 rows are missing
+sim_data_robust_reg_missing <- sim_data_robust_reg %>%
+  dplyr::mutate(dplyr::across(tidyselect::everything(), 
+                              ~ifelse(dplyr::row_number() %% 3 == 0, NA, .)))
+```
+
+```{r}
+# Creating data every 3 rows are missing
+sim_data_robust_reg_missing <- sim_data_robust_reg %>%
+  dplyr::mutate(age_raw = ifelse(dplyr::row_number() %% 3 == 0, NA, age_raw))
+```
+
+
+Compare the "N" values here where no imputation takes place:
+```{r}
+corr_extract(sim_data_robust_reg_missing,
+             .vars = c("age_raw", "eduLevel"),
+             .with_vars = "gender")
+```
+
+With the higher "N" values where imputation does take place:
+```{r}
+corr_extract(sim_data_robust_reg_missing,
+             .vars = c("age_raw", "eduLevel"),
+             .with_vars = c("gender"),
+             .impute = TRUE)
+```
+
+Missing values are also handled with `.use`. Please read the documentation for
+\code{\link[stats]{cor()}} or call `?cor` in your console for more details on
+how these methods handle missing values.
+
+### What is Included in Output
+
+The parameters `.prob`, `.nobs` control if additional rows will be attached displaying
+t-test P values and the number of observations. 
+
+See how this output only has a single row now:
+```{r}
+corr_extract(sim_data_robust_reg,
+             .vars = c("age_raw", "eduLevel"),
+             .with_vars = c("gender"),
+             .prob = FALSE, .nobs = FALSE)
+```
+
+Setting `.alpha` to `FALSE` removes the 4 columns used to describe alphas:
+```{r}
+corr_extract(sim_data_robust_reg,
+             .vars = c("age_raw", "eduLevel"),
+             .with_vars = c("gender"),
+             .prob = FALSE, .nobs = FALSE,
+             .alpha = FALSE)
+```
+
+And `.stats` controls other univariates displayed. This can be reduced to none:
+```{r}
+corr_extract(sim_data_robust_reg,
+             .vars = c("age_raw", "eduLevel"),
+             .with_vars = c("gender"),
+             .prob = FALSE, .nobs = FALSE,
+             .alpha = FALSE,
+             .stats = NULL)
+```
+
+Or can include any combination of the options listed above:
+```{r}
+corr_extract(sim_data_robust_reg,
+             .vars = c("age_raw", "eduLevel"),
+             .with_vars = c("gender"),
+             .prob = FALSE, .nobs = FALSE,
+             .alpha = FALSE,
+             .stats = c("min", "max", "sum"))
+```
+
+## Excel Output
+
+Excel output can be specified by the `.output_file` name. The path can also be explicitly
+specified with `.output_path`. If the path is not explicitly used, it will first check
+to see if a path is already in `.output_file`, e.g. if you pass
+"/data/share/my_output.xlsx" for `.output_file`, then "/data/share" will be the path and 
+the file name will be "my_output.xlsx". If no path can be found, it will use the current
+working directory. In .Rmd files, this is the same path that the .Rmd is stored in. In
+.R files or in console calls, this is whatever path is seen at the top of your console
+and can be seen by calling `getwd()`
+
+```{r, eval = FALSE}
+corr_extract(sim_data_robust_reg,
+             .vars = c("age_raw", "eduLevel"),
+             .with_vars = c("gender"),
+             .output_path = "../example_extract",
+             .output_file = "corr_extract_example")
+```
+
+TODO: Once output columns are standardized, include screenshots to keep in vignette.

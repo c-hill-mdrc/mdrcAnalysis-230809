@@ -1,0 +1,215 @@
+---
+title: "crosstab_extract: Crosstabulations and chi-square tests"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{crosstab_extract: Crosstabulations and chi-square tests}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup, include=FALSE}
+library(mdrcAnalysis)
+# Loading data
+data(bif_final)
+data(sim_data)
+
+```
+
+## Overview and Motivation
+
+Producing a simple two way or three way table is relatively easy with
+the `base::table` or `janitor::tably` functions.
+Our expanded __crosstab_extract__ expands beyond simple tabulated numbers to
+include:
+
+* whether the column and row variables have statistically significant
+difference through chi-square test, 
+* column percentages calculation, and
+* producing a single nice table output for multiple cross tabulations 
+against a single column.
+
+## Sample Data
+
+The Baseline Information Form (BIF) is a survey with a series of questions about a study participant (for example, it includes questions about their gender, date of birth, etc.). Soon after completing the BIF, study participants were randomly assigned to a program or control group. Baseline data was collected for two cohorts and provided to the data team using various file types. These synthetic BIF data are used as part of the Shoot for the Stars project in the Introduction to R and Introduction to SAS trainings. We'll be using this data in the examples below to demonstrate the crosstab_extract function.
+
+```{r}
+head(bif_final)
+```
+
+## About the Function
+
+__crosstab_extract__ requires 2 arguments to be passed, the actual data frame and
+the "column" variable to use in the cross-tabulation. 
+
+By default, `.l_row_var`, the variables to compare `.col_var` against, will include all variables in the data
+that are a) otherwise unspecified by an argument, and b) have fewer than `.max_lvls`
+unique values (by default, 24). So essentially, the function tries to include all categorical variables as row variables.
+
+## Function Call Examples
+
+### Limiting Row Variables
+
+Although the function only requires a data set and column variable, it is easier to understand the output if we start by listing a set of row variables.
+
+```{r}
+cross_out <- crosstab_extract(
+  .dataset = bif_final,
+  .col_var = "COHORT",
+  .row_vars = c("blmale", "bldiplomas_as")
+)
+
+head(cross_out[,c(1,2,6:8)])
+
+```
+
+**Pop Quiz:** Which variable is the Value __1__ and __2__ referring to?
+
+a) COHORT
+b) blmale
+c) None of the Above
+
+The __Value__ column in the output shows 1 and 2 - these are values for the column variable, _COHORT_.
+
+The values for the row variables appear in the column names - so for the blmale rows, there are counts for Frequency_0 and Frequency_1, because 0 and 1 are the 2 values for the blmale variable.
+
+Because _bldiplomas_as_ also has 0 and 1 values, the counts show up in the Frequency_0 and Frequency_1 columns. However, if there were a row variable with different values, there would be additional columns.
+
+In addition, the output has columns for _ChiSqValue_, _ChiSqProb_, and _ChiSqWarning_.
+
+```{r}
+head(cross_out[,c(1:5)])
+```
+
+### Limiting to Binary Variables
+
+Suppose we want to perform a cross-tab of _COHORT_ against all 
+binary values. We can have *crosstab_extract* perform this selection 
+automatically be setting `.max_lvls` to 2 as below. Since there is no `l_row_var` passed, all variables with 2 or fewer levels will be displayed as row variables. 
+
+```{r}
+cross_out <- crosstab_extract(.dataset = bif_final, 
+              .col_var = "COHORT", 
+              .max_lvls = 2)
+
+head(cross_out[,c(1,2,6,7,9,10,8)])
+
+```
+
+Note that this selection approach will include observations where the sample space is unary 
+(i.e. you will only see 1 value of a binary variable) while probabilistically it is binary!
+
+In this example, most of the binary variables have a value of 1 or 2, but _RACODE_ is "P" or "C". Therefore, there are columns for Frequency_0, Frequency_1, Frequency_P, and Frequency_C. Frequency_Total is used for all rows.
+
+### Displaying Labels
+
+Alternatively, as already demonstrated above,
+we can explicitly select the row variables to compare against using the `.l_row_var` argument. 
+You can also optionally pass labels for using the `.l_row_label` argument.
+
+```{r}
+cross_out <- crosstab_extract(.dataset = bif_final, 
+              .col_var = "COHORT",
+              .row_vars = c("bldiplomas_hs",
+                              "bldiplomas_ged",
+                              "bldiplomas_tec",
+                              "bldiplomas_as",
+                              "bldiplomas_4yr",
+                              "bldiplomas_md",
+                              "bldiplomas_non"),
+              # .row_labels = c("High School Diploma",
+              #                   "GED",
+              #                   "Technical Degree",
+              #                   "Associates Degree",
+              #                   "Bachelor's Degree",
+              #                   "Master's Degree",
+              #                   "None"),
+              .max_lvls = 2)
+
+head(cross_out[,c(1:3,7:9)])
+```
+
+The labels shows up in an additional column called _Variable_Label_.
+
+### Subgroup
+
+`.subgroup` further separates the cross tab by another variable. Here we see the 
+previously made binary variable cross-tabulation using _RA_CODE_ as a subgroup
+variable.
+
+
+```{r}
+crosstab_extract(
+              .dataset = bif_final, 
+              .col_var = "COHORT",
+              .row_vars = c("blmsmarried_lws"),
+              .subgroup = "RA_CODE",
+              .max_lvls = 2)
+```
+
+
+### Missings
+
+`.missing` determines if missing (NA) values should be treated as a distinct
+value in the cross-tabulation. With the default, `.Missing` = FALSE, NAs in the column variable or sub-group are not counted.
+
+```{r}
+cross_out <- crosstab_extract(
+  .dataset = bif_final,
+  .col_var = "COHORT",
+  .row_vars = c("blmale"),
+  .subgroup = "RA_CODE",
+)
+
+head(cross_out[,c(1:4, 8:10)], n=10)
+```
+When `.missing` is set to TRUE, there are rows in the output for when the subgroup or _COHORT_ are missing. There is also an additional column, _Frequency_NA, to count missings in the row variable, _blmale_.
+
+```{r}
+cross_out <- crosstab_extract(
+  .dataset = bif_final,
+  .col_var = "COHORT",
+  .row_vars = c("blmale"),
+  .subgroup = "RA_CODE",
+  .missing = TRUE
+)
+
+head(cross_out[,c(1:4, 8:11)], n=10)
+```
+
+Note, NA is accounted for in the `.max_lvls`
+calculation as well. If `.max_lvls` is used to determine the row variables rather than `l_row_var`, setting `.max_lvls` to 2 will exclude a lot of binary values that have missing values and 2 distinct values in the sample space. Setting `.max_lvls` to 3 captures more binary variables with missing values and 2 distinct values in the sample space.
+
+### Excel Output
+
+We can also save an excel extract file using the `.output_path` and `.output_file`.
+
+```{r, eval = FALSE}
+crosstab_extract(
+                .dataset = bif_final, 
+                .col_var = "COHORT",
+                .row_vars = c("bldiplomas_hs",
+                                "bldiplomas_ged",
+                                "bldiplomas_tec",
+                                "bldiplomas_as",
+                                "bldiplomas_4yr",
+                                "bldiplomas_md",
+                                "bldiplomas_non"),
+                # .row_labels = c("High School Diploma",
+                #                   "GED",
+                #                   "Technical Degree",
+                #                   "Associates Degree",
+                #                   "Bachelor's Degree",
+                #                   "Master's Degree",
+                #                   "None"),
+                .subgroup = "RA_CODE",
+                .max_lvls = 2,
+                .output_path = "../example_extract",
+                .output_file = "crosstab_extract_example")
+```

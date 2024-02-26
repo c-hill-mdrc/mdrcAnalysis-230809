@@ -1,0 +1,82 @@
+---
+title: "ht_extract: Homogeneity of Effect"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{ht_extract: Homogeneity of Effect}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  warning = FALSE,
+  message = FALSE
+)
+```
+
+```{r, warning = FALSE, message = FALSE}
+library(mdrcAnalysis)
+library(dplyr)
+
+# Convert COHORT to a factor for analysis
+finalBif <- bif_final %>%
+  dplyr::mutate(CohortFactor = factor(COHORT))
+```
+
+## Overview and Motivation
+
+The HT statistic (`ht_extract`) 
+is a test of homogeneity of effect size. The HT statistic is used to check whether impacts for 
+subgroups are statistically different.
+
+## Required Parameters
+
+The function as currently implemented requires the following parameters:
+  *`.dataset`: Input data
+  *`.subgroup`: Column used to group data into subgroups
+  *`.dependents`: Input data
+  *`.treatment`: Column to use as treatment variable
+  *`.covariates`: Other columns to pass as covariates
+  *`.asfactorcovs`: Character  vector of covariates to be run as factors/categorical variables
+  *`.confintalpha`: decimal value of desired alpha level for confidence intervals. Default is 0.95.
+  
+### BIF data
+
+The Baseline Information Form (BIF) is a survey with a series of questions about a study participant (for example, it includes questions about their gender, date of birth, etc.). Soon after completing the BIF, study participants were randomly assigned to a program or control group. Baseline data was collected for two cohorts and provided to the data team using various file types. These synthetic BIF data are used as part of the Shoot for the Star project in the Introduction to R and Introduction to SAS trainings. 
+
+We are using the BIF data set here to check our **lm_extract** and **ht_extract** functions.
+
+### Example with BIF data
+
+```{r}
+head(finalBif)
+```
+
+```{r}
+# Create vector of dependent variables
+finalBif_dependents <- names(finalBif[setdiff(names(finalBif), 
+                                              c("SAMPLEID", "RA_CODE", "CohortFactor", 
+                                                "COHORT", "RA_DATE", "AGE", "DOB", "blcurhrs_73plus"))]) 
+finalBif_treatment  <- "RA_CODE"
+
+ht_extract_r <-
+  ht_extract(.dataset = finalBif
+             ,.subgroup = "COHORT"
+             ,.dependents = finalBif_dependents
+             ,.treatment = "RA_CODE"
+             ,.covariates = NA_character_
+             ,.inc_trail = TRUE
+             ,.inc_sample = TRUE
+             # ,.output_path = "../example_extract"
+             # ,.output_file = "ht_extract_example"
+             )
+```
+
+```{r}
+tail(ht_extract_r)
+```
+
+
+![screenshot of default excel output](ht_extract_example.png)

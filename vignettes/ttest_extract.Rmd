@@ -1,0 +1,139 @@
+---
+title: "ttest_extract: T-Tests"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{ttest_extract: T-Tests}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  warning = FALSE,
+  message = FALSE
+)
+
+library(mdrcAnalysis)
+```
+
+## Overview and Motivation
+
+This function is effectively a wrapper around `stats::t.test` to allow staff to pass
+many dependent variables, run t-tests on by groups, and easily create an extract for sharing 
+or tabling.
+
+## Sample Data
+
+The Baseline Information Form (BIF) is a survey with a series of questions about a study participant (for example, it includes questions about their gender, date of birth, etc.). Soon after completing the BIF, study participants were randomly assigned to a program or control group. Baseline data was collected for two cohorts and provided to the data team using various file types. These synthetic BIF data are used as part of the Shoot for the Stars project in the Introduction to R and Introduction to SAS trainings. We'll be using this data in the examples below to demonstrate the ttest_extract function.
+
+```{r, warning = FALSE, message = FALSE}
+# load data set
+finalBif <- bif_final
+```
+
+```{r}
+head(finalBif)
+```
+
+## About the Function
+
+This function uses `stats::t.test`. Like `stats::t.test`, this function provides 2 methods and 
+will automatically select the appropriate method based on the class of the
+input, although I would personally recommend sticking with passing dataframes
+instead of formulas.
+
+## Function Call Examples
+
+### T-Test on All Numeric Variables
+
+When passing a dataframe as the first argument, the default method is used. 
+The only other required argument is the `.classvar` which is the name of the 
+categorical independent variable we are testing on. The dependent variables will
+by default include all numeric variables not specified by other parameters.
+
+
+```{r}
+ttest_extract(finalBif, .classvar = "RA_CODE")
+```
+
+This function is intended to perform and display a t-test comparison of the 
+dependent variable by splitting the values of the dependent variable along 
+`.classvar`. Thus `.classvar` must have exactly 2 values. If `.classvar` has any
+missing values, these are filtered immediately out of the dataset. If you wish 
+to perform a t-test comparison and use the existence of a variable as the 
+categorical, it is recommended you create a dummy variable representing it.
+
+### Specifying Variables
+
+If you wish to only perform the t-test comparison on a subset of the variables
+as dependents, you can explicitly specify that using  `.depvars`. `.depvar_labels` is also helpful if you have
+specific labels you wish to pass along that better describe the variables.
+
+```{r}
+
+ttest_extract(finalBif, .classvar = "RA_CODE",
+              .depvars = c("AGE", "bldiplomas_hs", "bldiplomas_ged",
+                           "bldiplomas_tec", "bldiplomas_as", "bldiplomas_4yr",
+                           "bldiplomas_md", "bldiplomas_non"),
+              .depvar_labels = c("Age (years)", "High School Diploma",
+                                 "GED", "Technical School",
+                                 "Associate's Degree", "Bachelor's Degree",
+                                 "Master's Degree", "No Degree"))
+```
+
+### By Group
+
+If you wish to separate your comparisons by another variable, you can specify 
+this variable with the `.byx` parameter. You can see that doing this adds a new 
+column based on the `.byx` variable chosen and a UniqueID variable that combines
+both the dependent variable and the `.byx` value.
+
+```{r}
+
+ttest_extract(finalBif, .classvar = "RA_CODE",
+              .byx = "COHORT",
+              .depvars = c("AGE", "bldiplomas_hs", "bldiplomas_ged",
+                           "bldiplomas_tec", "bldiplomas_as", "bldiplomas_4yr",
+                           "bldiplomas_md", "bldiplomas_non"),
+              .depvar_labels = c("Age (years)", "High School Diploma",
+                                 "GED", "Technical School",
+                                 "Associate's Degree", "Bachelor's Degree",
+                                 "Master's Degree", "No Degree"))  
+```
+
+## T-Test Calculcation
+
+The other two primary arguments available to change how the t.test is calculated
+are `.mu` which indicates the true difference in mean being calculated for. This
+defaults to 0 which should satisfy most use cases. 
+
+There is also `.alternative`,
+which allows you to change the alternate hypothesis. This defaults to
+"two.sided".
+
+### Output to Excel
+
+This function is largely designed around creating output in Excel. The data 
+results are returned in dataframe form but will also print to an Excel if 
+`.file_name` and `.file_path` are specified:
+
+```{r}
+ttest_output <- ttest_extract(
+  finalBif 
+  ,.classvar = "RA_CODE"
+  ,.byx = "COHORT"
+  ,.depvars = c("AGE", "bldiplomas_hs", "bldiplomas_ged",
+                "bldiplomas_tec", "bldiplomas_as", "bldiplomas_4yr",
+                "bldiplomas_md", "bldiplomas_non")
+  ,.depvar_labels = c("Age (years)", "High School Diploma",
+                      "GED", "Technical School",
+                      "Associate's Degree", "Bachelor's Degree",
+                      "Master's Degree", "No Degree")
+  ,.mu = 0
+  ,.alternative = "two.sided"
+  # ,.output_path = "../example_extract"
+  # ,.output_file = "ttest_extract_example"
+  )  
+```

@@ -1,0 +1,101 @@
+---
+title: "lm_extract: OLS Regression"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{lm_extract: OLS Regression}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  warning = FALSE,
+  message = FALSE
+)
+```
+
+```{r, warning = FALSE, message = FALSE}
+library(mdrcAnalysis)
+library(dplyr)
+
+# load data set
+data("bif_final")
+
+# Convert COHORT to a factor for analysis
+finalBif <- bif_final %>%
+  dplyr::mutate(CohortFactor = factor(COHORT))
+```
+
+## Overview and Motivation
+
+`lm_extract` allows you to run impact estimations across multiple outcome
+variables across the same set of treatment and covariates.
+
+## Default Behavior
+
+`lm_extract` requires 5 arguments to be passed:
+
+- the impact study data set (.dataset)
+- the list of dependent/outcome variables (.dependents)
+- the treatment variable (.treatment)
+- the control variables (.covariates)
+- confidence interval and the options being *.90*, *.95* and *.99* (.confintalpha)
+
+### BIF data
+
+The Baseline Information Form (BIF) is a survey with a series of questions about a study participant (for example, it includes questions about their gender, date of birth, etc.). Soon after completing the BIF, study participants were randomly assigned to a program or control group. Baseline data was collected for two cohorts and provided to the data team using various file types. These synthetic BIF data are used as part of the Shoot for the Star project in the Introduction to R and Introduction to SAS trainings. 
+
+We are using the BIF data set here to check our **lm_extract** and **ht_extract** functions.
+
+```{r}
+head(finalBif)
+```
+
+### Example with BIF data
+
+In our example below, we are using baseline characteristics from the simulated randomized control trial data as outcome variables. As it is an RCT study, we do not expect to see any *impact* differences 
+between treatment and control groups based on the baseline characteristics. If we do see a difference,
+it would imply that we have done randomization incorrectly!
+
+```{r, warning = FALSE, message = FALSE}
+# Create vector of dependent variables
+## Using `setdiff()` to create vector of all variables except those listed
+finalBif_dependents <- names(finalBif[setdiff(names(finalBif), 
+                                              c("SAMPLEID", 
+                                                "RA_CODE", 
+                                                "CohortFactor", 
+                                                "COHORT", 
+                                                "RA_DATE", 
+                                                "AGE", 
+                                                "DOB", 
+                                                "blcurhrs_73plus"))])
+finalBif_treatment  <- "RA_CODE"
+finalBif_covariates <- c("CohortFactor", "AGE")
+
+extract_r <- 
+  lm_extract(
+  .dataset = finalBif
+  ,.dependents = finalBif_dependents
+  ,.treatment= finalBif_treatment
+  ,.covariates = finalBif_covariates
+  ,.confintalpha = .9                
+   #,.output_path = "/data/share/xproject/practice/user"
+   #,.output_file = "lm_extract_example"
+  ) # confidence interval - p value is .1 here.
+```
+
+As you can see in the results below for the BIF data, we have
+most of all the individual level characteristics as __dependent__ variables.
+As mentioned above, we are not expecting any significant differences between the control group and  program group.
+You can derive that from __estimate_c__ , __estimate_p__, __impact__ and __p_value__.
+
+If you scroll to the right, you also check for __unadj_estimate_c__ and __unadj_estimate_p__
+where we see very little different. The __unadj__ estimates are not accounting for any control variables as we run
+the analysis. Therefore, this is akin to checking if we have the same proportions of each variable in each
+group.
+
+```{r}
+tail(extract_r)
+```

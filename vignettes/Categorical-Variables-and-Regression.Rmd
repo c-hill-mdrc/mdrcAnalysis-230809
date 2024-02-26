@@ -1,0 +1,142 @@
+---
+title: "topic: Categorical Variables and Regression"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{topic: Categorical Variables and Regression}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup}
+library(mdrcAnalysis)
+library(dplyr)
+library(emmeans)
+```
+
+# Categorical Variables in Regression
+
+Nearly all Randomized Control Trials (RCTs) at MDRC will use linear regression to assess the impact of the program in question. In many cases, the models specified for the regression could include a categorical variable/covariate/predictor. However, categorical variables cannot be included in linear models without some consideration. Broadly, there is one way that MDRC staff have become accustomed to specifying categorical variables, which will be outlined, but there are other ways. This vignette aims to clarify this topic.
+
+## What is a categorical variable?
+
+Categorical variables are simply variables that take on a limited number of discrete levels unlike continuous variables which can take on any value. Examples of categorical variables are treatment status, sex, race, site, or educational attainment.
+
+## Why can't we just plug a categorical variable into a regression?
+
+Generally, categorical variables are nominal. That is, the order of their levels are not meaningful. Often the categorical variable might be expressed as a numeric variable with a character label from a data dictionary. For example, the data may be from an intake form with 4 sites the levels might simply be 1, 2, 3, 4 corresponding to "site1", "site2", "site3", and "site4". Given the numeric variable and intuitive numbering, it might be tempting to use the variable directly in the regression. However, this would present a problem in our regression because the regression will attempt to use those numeric values mathematically.
+
+To illustrate this issue, imagine the categorical variable of four sites. Site 4 is not 4 times more "meaningful" than site 1. The sentence itself is does not make much sense. But, mathematically 4 is 4 times 1. Linear regression does not understand categorical variables stored as numeric variables, so it would simply attempt to do the math with the values and the results would be very odd.
+
+### A note on ordinal variables
+
+On occasion, the categorical variable may actually be ordinal. That is, the order of the values might actually be meaningful. However, unless the variable is also interval, the spacing between the levels might still not be linear. That is, the difference between "okay", "good", and "very good" might not be equal. On the other hand, some resources suggest regression is not terribly sensitive to these distinctions. It's possible this is true and the decision is less treacherous than for nominal categorical variables, nonetheless using factors/dummies is still common practice.
+
+## How to specify categoricals for regression in R
+
+There are three ways to specify categorical variables in regression:
+  
+* First, one could use character variables. Character variables are allowed in the `lm()` function, however, they might not be accepted in other functions, such as means. Additionally, `lm()` seems to simply do a conversion to factor, meaning that the "first" level is the reference level. More on that below.   
+* The second method is to simply convert all levels of the categorical into a dummy. That is, `site1 = 1` for when the `site` is `1` and `0` for all other sites. This would be repeated for all sites. In the regression, one of the site dummies would be omitted. The omitted dummy becomes the reference level.  
+* The final method, and the one that is recommended, is to use factors. This is the same as using the `CLASS` statement in SAS. 
+
+### What are factors?
+
+In R, categorical variables can be stored as factors. [Factors in R are an underlying integer value with character labels for each level](https://stat.ethz.ch/R-manual/R-devel/library/base/html/factor.html#:~:text=factor%20returns%20an%20object%20of%20class%20%22factor%22%20which%20has%20a%20set%20of%20integer%20codes%20the%20length%20of%20x%20with%20a%20%22levels%22%20attribute%20of%20mode%20character). This is similar to applying a format to a numeric variable in SAS.
+
+Factors in R are identified by many functions and provide specified functionality. When working with regression, the underlying factor values are understood not to have numerical meaning. This avoids the issue of being treated as continuous variables. Additionally, when a factor is provided to a regression function, the levels of the factor are parameterized and a series of binary variables are actually created. This is very similar to the `CLASS` statement in SAS.
+
+### Creating a factor variable in R
+
+Creating a factor in R is very straightforward. Simple use the [`factor()` function](https://stat.ethz.ch/R-manual/R-devel/library/base/html/factor.html).
+
+The below code shows how the `favAnimals` variable is converted to a factor. The `favAnimals` variable contains three possible character responses: "cat", "croc", "dog". By default, the reference level is set as the lowest value of the variable. That is, the result of `sort(unique(variable))`. For numeric variables, this is simply in increasing order, for character variables this is alphabetical order. This is generally not a problem for treatment status as "control"/0 occurs before "treatment"/"program"/1, but it is important to note for other variables.
+
+```{r}
+sim_data2 <- 
+  sim_data_robust_reg %>% 
+  mutate(animals_factor = factor(favAnimals))
+
+str(sim_data2$animals_factor)
+```
+
+## What is a reference level? How to change the reference level?
+
+The reference level in regression is the level to which all comparisons are made. More technically, the parameter/coefficient estimates are in comparison to the reference level. In plain terms and using our example with `animals_factor`, the default reference level is "cat". If our regression included this variable, then the coefficient estimate for having a "croc" or "dog" as the favorite animal would be in comparison to having a "cat" as the favorite animal. Thus, the interpretation would be participants with "croc" as their favorite animal are more/less likely than participants with "cat" as their favorite animal. This becomes much more obvious when considering the treatment status as interpretations are "program" effects compared to the "control" condition.
+
+When using character variables in regression, the first level (either numerically or alphabetically) would be used as the reference level. When creating dummies for all levels of the categorical, the omitted dummy is the reference. For factors, the reference level can be left as the first level (either numerically or alphabetically) or it can be manually assigned. 
+
+As noted above, the default reference level is the "first" value when the variable is sorted. This may not always be the desired reference level. If needed, the variable can be "re-leveled" using the [`fct_relevel()` function](https://forcats.tidyverse.org/reference/fct_relevel.html) from the `tidyverse` or the [`relevel()` function](https://stat.ethz.ch/R-manual/R-devel/library/stats/html/relevel.html) from base R. The second argument in both functions allows the specification of the desired reference level. Further, the entire order of the levels can be changed as desired using these methods.
+
+```{r}
+sim_data3 <- 
+  sim_data2 %>% 
+  mutate(animals_factor_2 = forcats::fct_relevel(animals_factor, "dog"))
+
+str(sim_data3$animals_factor)
+str(sim_data3$animals_factor_2)
+```
+
+## Estimating adjusted means with categorical variables in the model
+
+*NOTE 1: The following is applied in the extract functions. Details are provided here for application outside of the functions.*
+*NOTE 2: Not all policy areas report adjusted means. Please confirm with your project's impact analyst as needed.*
+
+Once the categorical variable is applied using one of the methods described, the variable will be used correctly in the regression. However, there is an additional step needed when calculating the adjusted means for the groups. Adjusted means, as they're known in the extracts, are the means of the variable of interest (often treatment) calculated after *adjusting* for the effects of the covariates. This is distinct from the unadjusted means which are the raw means of the variable of interest. If no covariates are used, the unadjusted and adjusted means are equivalent, but the covariates are meant to adjust for any differences between groups. Thus, the adjusted means account for these effects. Additionally, adjusted means present means for a balanced population which may not have been present in the study. See [this resource](https://cscu.cornell.edu/wp-content/uploads/93_emmeans.pdf) for more information on how to calculate adjusted means.
+
+In SAS, the adjusted means are calculated using the `LSMeans` or least squares means option. In broader statistical jargon it is known as the estimated marginal means and these means can be calculated using the `emmeans()` function from the [`emmeans` package](https://cran.r-project.org/web/packages/emmeans/) in R. 
+
+### Calculating estimated marginal means in R
+
+To calculated the estimated marginal means in R, it is important to specify the reference grid. The reference grid is a "grid" of values which will be input into the model to establish the estimates of the means. For continuous covariates, the overall mean is used. As discussed above, using the overall mean is not appropriate for categorical covariates. In order to have the model use the levels of the factor, the factor variable must be specified in the `ref_grid()` function. 
+
+In the below example, the model attempts to estimate `employed_01` using `treatment` and the `favAnimals` as a covariate. 
+
+```{r}
+test <- 
+  sim_data2 %>% 
+  mutate(animals_factor = as.numeric(animals_factor))
+
+# Create model predicting employed_01 with treatment and animals_factor. Assign it to model1
+model1 <- lm(employed_01 ~ treatment + animals_factor, data=sim_data2)
+```
+
+If the categorical is specified correctly, then the reference grid will list the variable and all it's levels. For continuous variables, the `ref_grid()` will show the average of the variable. NOTE: treatment is shown here because it is also a categorical variable. 
+
+```{r}
+# Check the model reference grid
+ref_grid(model1)
+```
+
+If the model is not specified correctly and the column needs to be converted from continuous to a categorical, then the `ref_grid()` function can be used with the `cov.keep=` parameter. Any variables listed in this parameter will be treated as a categorical for the purposes of calculating the estimated marginal means. NOTE: There are additional parameters for specifying which variables should be used as categorical. 
+
+As an aside, this is another way that categorical variables can be specified, but it may not be applicable to all analyses. As a result, it is much better to ensure the variable is handled correctly in the model prior to this stage. 
+
+```{r}
+# review the reference grid - lists all reference levels
+rg <- ref_grid(model1, cov.keep = c("treatment", "animals_factor"))
+
+# calculate least square means (a.k.a. estimated marginal means (em means))
+# first argument is model, 
+# second argument is character vector of predictors over which EMMs are calculated
+# The two below are equivalent
+m1_lsmeans <- emmeans(model1, "treatment")
+rg_lsmeans <- emmeans(rg, "treatment")
+
+m1_lsmeans
+rg_lsmeans
+```
+
+
+### Other coding methods for categorical variables in regression
+As noted above, the typical method of coding categorical variables at MDRC involved a comparison to a particular level. This is generally useful because the assessment of the impact of a program is in comparison to the control group. However, in some situations it is helpful to use other comparisons. These alternatives can be estimated using [different coding of dummy variables](https://stats.oarc.ucla.edu/r/library/r-library-contrast-coding-systems-for-categorical-variables/) or they can be estimated using contrasts. In SAS contrasts were applied using the `CONTRAST` statement or `ESTIMATE` statements. In R, the `emmeans` package supports different contrasts using a handful of functions. See the [Comparisons and Contrasts in emmeans](https://cran.r-project.org/web/packages/emmeans/vignettes/comparisons.html) vignette for more information. 
+
+
+#### Why might you use different coding methods?
+For additional information on different coding methods and their utility, refer to [this vignette from the University of Illinois](http://courses.atlas.illinois.edu/spring2016/STAT/STAT200/RProgramming/RegressionFactors.html). 

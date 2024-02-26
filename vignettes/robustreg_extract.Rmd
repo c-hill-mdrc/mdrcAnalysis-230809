@@ -1,0 +1,109 @@
+---
+title: "robustreg_extract: Robust Regression"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{robustreg_extract: Robust Regression}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+### Simulated data
+
+It is the year 2050. The AI revolution is almost complete. Troves of workers across sectors & educational qualifications have been unemployed. The federal government along with the premier research agency, mdrc is partnering to evaluate job retraining programs and whether the specialized empathy & listening training (treatment) increases the chance of people being employed in new human care industries that have propped up. An initial trial has been conducted across 5 cities in multiple sites with 1-25 individuals in each training site.
+
+The initial simulated data set is a 3 level data structure consisting of
+
+* **City** - 5 Cities with population between 1,000 and 2,000
+* **Sites** - Within each city, there are between 1-10 job training centers
+* **Individuals** - Within each job training center, there are 1-25 trainees/individuals
+
+Additionally, we are assuming that people with prior higher education has higher prior income
+and have put a correlation structure around it. 
+Furthermore, we think that married and single people live in distinct clusters within this data set. 
+In our example below, we have set the clustering at the sites level.
+
+```{r}
+library(mdrcAnalysis)
+data("sim_data_robust_reg")
+```
+
+```{r}
+head(sim_data_robust_reg)
+```
+
+## Minimum Arguments
+
+`surveyreg_extract` requires that you pass it the data, the treatment variable, 
+and a vector of dependent variables. Without a `.ByX` variable set, this
+generates a single row for each `.DepVars` and displays adjusted means and 
+impacts based on the linear model generated as well as the unadjusted statistics.
+
+```{r}
+robustreg_extract(sim_data_robust_reg,
+                  .TmntVar = "treatment",
+                  .DepVars = "employed_01")
+```
+
+This function does allow for passing of multiple treatment variables and will
+generate rows for each combination of `.TmntVar` and `.DepVars`
+
+```{r}
+robustreg_extract(sim_data_robust_reg,
+                  .TmntVar = "treatment",
+                  .DepVars = c("employed_01",
+                               "employed_02"))
+```
+
+## Adjusting the Model
+
+The model being calculated uses the `.DepVar` as the dependent variable in the
+linear model and `.TmntVar` as a covariate. If you wish to add more covariates,
+add these as a vector of the variable names into the `.CoVars` argument.
+
+The model created can be seen byt looking at the column "Equations"
+
+```{r}
+robustreg_extract(sim_data_robust_reg,
+                  .TmntVar = "treatment",
+                  .DepVars = c("employed_01",
+                               "employed_02"),
+                  .CoVars = c("eduLevel", "age_scaled"),
+                  .asfactorcovs = c("eduLevel"))
+```
+
+There are also 2 options for the calculation of standard errors: `.ClusterSE`. and `.RobustSE`. 
+`.ClusterSE`. supersedes `.RobustSE`.in priority if both are set. 
+`.ClusterSE`. takes the name of a variable to cluster by, using the "HC1", 
+degrees of freedom-based correction bias adjustment. 
+If `.RobustSE`. is run, then there is no clustering of standard errors but the "HC1" correction is still
+applied. There is no column displaying if `.RobustSE` is TRUE or FALSE although
+the column `NClusters` does display how many distinct clusters there are based
+on the variable passed. 
+
+We can also output this extract into an excel file.
+
+```{r, eval=FALSE}
+robustreg_withCluster <-
+  robustreg_extract(sim_data_robust_reg
+                    ,.TmntVar = "treatment"
+                    ,.DepVars = c("employed_01",
+                                  "employed_02")
+                    ,.ByX = c("eduLevel")
+                    ,.ClusterSE = "sites"
+                    # ,.output_path = "../example_extract"
+                    # ,.output_file = "robust_reg_extract_example"
+                    )
+
+robustreg_withCluster %>%
+  dplyr::relocate(UniqueId) %>%
+  dplyr::arrange(UniqueId)
+```
+
+![screenshot of default excel output](surveyreg_extract_example.png)

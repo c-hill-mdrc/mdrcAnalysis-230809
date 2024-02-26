@@ -1,0 +1,600 @@
+---
+title: "topic: Simulated_Data"
+author: "Zarni w/ guidance from Melvin"
+date: "2022-10-28"
+output:
+  html_document:
+    code_folding: show
+    df_print: paged
+    fig_caption: yes
+    fig_height: 8
+    fig_width: 10
+    highlight: tango
+    theme: journal
+    toc: yes
+    toc_depth: 6
+    toc_float: yes
+  github_document:
+    df_print: paged
+    fig_caption: yes
+    fig_height: 8
+    fig_width: 10
+    toc: yes
+vignette: >
+  %\VignetteIndexEntry{topic: Simulated_Data}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+# Set Up
+
+## Data Path
+
+The simulated data would be saved to _X/Training/Data Sources_
+
+```{r dataPath, warning = FALSE, message = FALSE}
+outData <- "/data/share/xproject/Training/Practice/htet/"
+```
+
+## Packages
+
+Below is a collection of R libraries powering this markdown. 
+
+```{r library, warning = FALSE, message = FALSE}
+library(fabricatr) # for simulating data sets
+library(dplyr) # for piping and grouping
+```
+
+## Lab Notes
+
+The lab notes of decisions and directions we made are collated at - 
+https://github.com/MDRCNY/data-programming-user-code/issues/58
+
+# Objective
+
+In this markdown, we are using the __fabricatr__ package from the __DeclareDesign__ package
+to create simulated experimental design data.
+These simulated data will enable us to test a suite of functions mdrc/rtu has produced for our
+RCT work across departments.
+
+## An initial simulated data set
+
+It is the year 2050. The AI revolution is almost complete. Troves of workers across sectors & educational qualifications have been unemployed. The federal government along with the premier research agency, mdrc is partnering to evaluate job retraining programs and whether the specialized empathy & listening training (treatment) increases the chance of people being employed in new human care industries that have propped up. An initial trial has been conducted across 5 cities in multiple sites with 1-25 individuals in each training site.
+
+The initial simulated data set is a 3 level data structure consisting of
+
+* **City** - 5 Cities with population between 1,000 and 2,000
+* **Sites** - Within each city, there are between 1-10 job training centers
+* **Individuals** - Within each job training center, there are 1-25 trainees/individuals
+
+Additionally, we are assuming that people with prior higher education has higher prior income
+and have put a correlation structure around it. 
+Furthermore, we think that married and single people live in distinct clusters within this data set. 
+In our example below, we have set the clustering at the sites level.
+
+#### Notes on how to use the fabricatr::fabricate() function
+
+- Treat it like *dplyr::* if you have variables you want to use later in the *dplyr* pipeline, you have to create them before and you will be
+"piping" them down.
+
+- For continuous variables, you need to create a raw one and a scaled one. The raw one is for your actual analysis.
+The scaled one is to be used in the linear model with the treatment effect towards an outcome. 
+We need the scaled variable to keep the linear combination
+of independent variables within reasonable bounds when we use the probit function to convert the probabilities 
+to between 0 and 1. 
+
+-  For categorical variables, if you want to add labels, do not add it in the function. Add it after the data set has been created if you are correlating later on.
+
+There is a section below that unpacks these steps.
+
+- correlate function
+
+In the **given** parameter, you specify the independent variable you want to correlate with. 
+The rest of the parameters are on specifying the probability distribution you want to draw from for your variable of interest (in the example below, it is pre_income_raw).
+For the probability distribution specification (**draw_handler** parameter below),
+you can also insert functions from base R such as rnorm etc on top of the built-in fabricator's probability 
+distribution functions. 
+Further, you can also supply your own vector of probabilities as well.
+ 
+- icc function 
+
+So far it's only available for variables that are binomial or normal in distribution.
+
+### Simulation Code 1
+
+This section contains the base simulation code.
+Subsequent sections titled in increasing numeric order *Simulation Code 2* etc
+are built upon this  initial data set by adding missingness among others.
+
+
+```{r simulatedData01}
+# setting seed to keep the results consistent
+set.seed(1234)
+sim_three_levels <-
+  fabricatr::fabricate(
+    cities = add_level(N = 5, population = runif(n = N, min = 1000, max = 2000)), 
+    sites  = add_level(N = sample(1:10, size = length(cities), replace = TRUE)), 
+    individuals = add_level(N = sample(1:25, size = length(sites), replace = TRUE),
+                            age_raw = runif(N, 25,35),
+                            age_scaled = scale(age_raw),
+                            eduLevel = draw_categorical(N = N, prob = c(0.2, 0.3, 0.2, 0.1, 0.1)),
+                            pre_income_raw = 5000 * (correlate(
+                              given = eduLevel,
+                              rho = 0.6,
+                              draw_handler = rgamma,
+                              shape = 5,
+                              scale = 1)),
+                            pre_income_raw_25pct = as.vector(quantile(pre_income_raw, probs = 0.25)), # pull out those with income less than 25 percentile
+                            tanf_receipt = base::ifelse(pre_income_raw <= pre_income_raw_25pct, draw_binary(N = 1, prob = 0.9), 0),
+                            snap_receipt = base::ifelse(tanf_receipt %in% 1, 1, base::ifelse(pre_income_raw <= pre_income_raw_25pct, draw_binary(N = 1, prob = 0.6),0)),
+                            pre_income_scaled = scale(pre_income_raw),
+                            gender = draw_binary(N = N, prob = 0.6),
+                            numChild = draw_categorical(N = N, prob = c(0.2, 0.4, 0.2, 0.05, 0.05)),
+                            maritalStatus = draw_binary_icc(N = N, prob = 0.5, clusters = sites, ICC = 0.7), #ICC story!
+                            favAnimals = draw_categorical(N = N, prob = cbind(cat = runif(N, 0, 1), 
+                                                                              dog = runif(N, 0, 1),
+                                                                              croc = runif(N, 0,1))),
+                            treatment = draw_binary(0.5, N = N),
+                            probs_01 = -1.25 * age_scaled + 2 * treatment,
+                            employed_01 = draw_binary(latent = -1.25 * age_scaled + 2 * treatment + 
+                                                        rnorm(N, mean = 0, sd = 0.1),
+                                                   link = "probit"),
+                            probs_02 = -3.0 * age_scaled + 1.25 * pre_income_scaled + 1 * gender + 
+                                        0.25 * eduLevel + -0.5 * tanf_receipt + -0.25 * snap_receipt+ -0.5 * numChild + 
+                              2 * treatment + 0.0001 * favAnimals +
+                              rnorm(N, mean = 0, sd = 0.1),
+                            employed_02 = draw_binary(latent = -3.0 * age_scaled + 1.25 * pre_income_scaled + 1 * gender + 
+                                                     0.25 * eduLevel + -0.5 * tanf_receipt + -0.25 * snap_receipt +
+                                                       -0.5 * numChild + 2 * treatment + rnorm(N, mean = 0, sd = 0.1),
+                                                   link = "probit")
+                           )
+  )
+```
+
+### Simulated Data Set
+
+An initial look at the simulated data.
+
+```{r checkSimData01}
+head(sim_three_levels, n = nrow(sim_three_levels))
+```
+
+```{r}
+sim_three_levels <-
+  sim_three_levels %>%
+    dplyr::mutate(favAnimals = case_when(
+      favAnimals == 1 ~ "cat",
+      favAnimals == 2 ~ "dog",
+      favAnimals == 3 ~ "croc"
+    ))
+```
+
+### Saving the Data Set
+
+```{r, eval=FALSE}
+readr::write_csv(sim_three_levels, 
+                 file = "/example_extract/sim_three_levels.csv")
+```
+
+### Checking Simulated Data Set
+
+One of our first checks to make sure that the binary outcome we have specified have both classes.
+We also unpack the three steps it takes to unpack convert the scaled linear combination of independent variables
+to predictive probabilities through the probit function. We use an independent function (not a part of fabricator package)
+to confirm that process. Those steps are annotated as **Step #** below for each of the outcomes.
+
+#### Outcome 1: Employed_01
+
+```{r}
+summary(sim_three_levels$employed_01)
+```
+
+```{r}
+table(sim_three_levels$employed_01)
+```
+
+Digging into predictive probability transformations!
+
+**Step 1**
+
+Raw linear combination of independent variables.
+
+```{r}
+summary(sim_three_levels$probs_01)
+```
+
+**Step 2**
+
+Converting Raw linear combination of independent variables to
+predictive probabilities between 0 and 1 using probit.
+
+```{r}
+probs_01_transformed <- VGAM::probitlink(theta = sim_three_levels$probs_01, inverse = TRUE)
+summary(probs_01_transformed)
+```
+
+**Step 3**
+
+The check is not exact accurate as fabricator draws outcome
+from a vector of predictive probabiltiies.
+
+In the immediate code chunk below, I have specified a cut off point of
+**0.5** to delineate the outcome.
+
+```{r}
+# NON-Facbricator
+probs_01_transformed_tib <- as_tibble(probs_01_transformed)
+
+probs_01_transformed_tib_cutoff <-
+  probs_01_transformed_tib %>%
+  dplyr::mutate(employed_01_cut_off_0.5 = ifelse(value > 0.5, 1,0))
+```
+
+```{r}
+# NON-Fabricator distribution of outcome
+table(sim_three_levels$employed_01)
+```
+
+This is the fabricator's outcome distribution which does not have specified
+cut off point but draws from a distribution. The results are close enough!
+
+```{r}
+# Fabricator distribution of outcome
+table(probs_01_transformed_tib_cutoff$employed_01_cut_off_0.5)
+```
+
+#### Outcome 2: Employed_02
+
+Digging into predictive probability transformations!
+
+**Step 1**
+
+Raw linear combination of independent variables.
+
+```{r}
+summary(sim_three_levels$employed_02)
+```
+
+```{r}
+summary(sim_three_levels$probs_02)
+```
+
+**Step 2**
+
+Converting Raw linear combination of independent variables to
+predictive probabilities between 0 and 1 using probit.
+
+```{r}
+probs_02_transformed <- VGAM::probitlink(theta = sim_three_levels$probs_02, inverse = TRUE)
+```
+
+```{r}
+summary(probs_02_transformed)
+```
+
+**Step 3**
+
+The check is not exact accurate as fabricator draws outcome
+from a vector of predictive probabiltiies.
+
+In the immediate code chunk below, I have specified a cut off point of
+**0.5** to delineate the outcome.
+
+```{r}
+# NON-Facbricator
+probs_02_transformed_tib <- as_tibble(probs_02_transformed)
+
+probs_02_transformed_tib_cutoff <-
+  probs_02_transformed_tib %>%
+  dplyr::mutate(employed_02_cut_off_0.5 = ifelse(value > 0.5, 1,0))
+```
+
+```{r}
+# NON-Fabricator distribution of outcome
+table(sim_three_levels$employed_02)
+```
+
+This is the fabricator's outcome distribution which does not have specified
+cut off point but draws from a distribution. The results are close enough!
+
+```{r}
+# Fabricator distribution of outcome
+table(probs_02_transformed_tib_cutoff$employed_02_cut_off_0.5)
+```
+
+#### Checking data structure
+
+Number of Cities & Sites - Please check if the number of cities are as you have set and the num sites are within range.
+
+```{r}
+sim_three_levels %>%
+  dplyr::group_by(cities) %>%
+  dplyr::summarise(num_sites = length(unique(sites)))
+```
+Number of individuals within Cities & Sites
+
+```{r}
+num_cities_sites <-
+  sim_three_levels %>%
+    dplyr::group_by(cities, sites) %>%
+    dplyr::summarise(num_indivs = length(unique(individuals)))
+head(num_cities_sites, n = nrow(num_cities_sites))
+```
+Range of individuals - Please check if the minimum and maximum number of individuals are within the range you have set
+
+```{r}
+summary(num_cities_sites$num_indivs)
+```
+
+#### TANF receipt
+
+For TANF receipt - there should be 2 categories - 1 (those who received) & 0 (those who do not).
+The ones who receive should have consistently lower income.
+
+```{r}
+summary(sim_three_levels$pre_income_raw)
+```
+
+```{r}
+sim_three_levels %>%
+  dplyr::select(pre_income_raw, tanf_receipt) %>%
+  dplyr::group_by(tanf_receipt) %>%
+  dplyr::summarise(min_pre_income_raw = min(pre_income_raw),
+                   mean_pre_income_raw = mean(pre_income_raw),
+                   median_pre_income_raw = median(pre_income_raw),
+                   max_pre_income_raw = max(pre_income_raw))
+```
+#### Snap receipt
+
+For SNAP receipt - there should be 2 categories - 1 (those who received) & 0 (those who do not).
+The ones who receive should have consistently lower income.
+
+```{r}
+sim_three_levels %>%
+  dplyr::select(pre_income_raw, tanf_receipt, snap_receipt) %>%
+  dplyr::group_by(snap_receipt) %>%
+  dplyr::summarise(min_tanf_receipt = min(tanf_receipt),
+                   max_tanf_receipt = max(tanf_receipt),
+                   min_pre_income_raw = min(pre_income_raw),
+                   median_pre_income_raw = median(pre_income_raw),
+                   max_pre_income_raw = max(pre_income_raw))
+```
+#### Edu-Income correlation check
+
+Those with prior higher education have prior higher income.
+
+```{r}
+cor(sim_three_levels$eduLevel, sim_three_levels$pre_income_raw)
+```
+
+```{r}
+sim_three_levels %>%
+  dplyr::group_by(eduLevel) %>%
+  dplyr::summarise(
+    min_pre_income_raw = min(pre_income_raw),
+    mean_pre_income_raw = mean(pre_income_raw),
+    max_pre_income_raw = max(pre_income_raw)
+  )
+```
+#### Marital Status icc check
+
+Some sites should have ZERO people who are married and some sites should have EVERYONE who are married!
+
+```{r}
+sim_three_levels %>%
+  dplyr::group_by(sites) %>%
+  dplyr::summarise(mean_marital_status = mean(maritalStatus))
+```
+
+### Simulation Code 2
+
+Here we are going to create **missing completely at random** values
+by drawing a random tuple that captures the range of the row and columns.
+Those tuple values will then be indexed back to the data set to be replaced
+with missing values.
+
+```{r}
+# first, we are drawing the dimensions of the rows and columns
+dim(sim_three_levels)
+rN <- dim(sim_three_levels)[1] # row dimension
+cN <- dim(sim_three_levels)[2] # column dimension
+```
+
+```{r}
+# second, you want to set how much percentage of the data you want to be missing
+#---------------#
+perMiss <- 0.02    # percentage of the data to be considered missing
+#---------------#
+
+totalItems <- rN * cN 
+perMissingC <- round(perMiss * totalItems,0)
+
+```
+
+```{r}
+# third, you set seed and draw the tuples
+set.seed(1234)
+rTuple1 <- sample(1:rN, 129)
+cTuple2 <- sample(1:cN, 129, replace = TRUE)
+```
+
+```{r}
+# fourth we add the missing data
+sim_three_levels_missing <- sim_three_levels
+
+for (i in 1:length(rTuple1)){
+  sim_three_levels_missing[rTuple1[i], cTuple2[i]] <- NA
+}
+```
+
+```{r}
+#check
+sum(is.na(sim_three_levels_missing))
+```
+
+### Saving the Data Set
+
+```{r, eval=FALSE}
+#readr::write_csv(sim_three_levels_missing, file = here::here("example_extract", "sim_three_levels_missing.csv"))
+```
+
+
+### Simulation Code 3
+
+This is the sample code on how we can add labels to categorical variables.
+We would not add in the original simulation data because character variables will not allow 
+us to multiply with numeric ones in the correlation equations.
+
+```{r}
+sim_three_levels_cat <-
+  sim_three_levels %>%
+  dplyr::mutate(cities = case_when(
+    cities == 1 ~ "London",
+    cities == 2 ~ "New York",
+    cities == 3 ~ "Paris",
+    cities == 4 ~ "Rangon",
+    cities == 5 ~ "Sydney"
+  )
+)
+```
+
+```{r}
+unique(sim_three_levels_cat$cities)
+```
+
+# Misc
+
+This section unpacks the function beneath fabricator. If you are curious, play around with it.
+Otherwise, skip!
+
+```{r}
+fabricate(N = 3,
+   x1 = 10 * rnorm(N),
+   x2 = rnorm(N),
+   binary = draw_binary(latent = x1, link = "probit"))
+```
+
+```{r}
+#drawbinary
+function (prob = link(latent), N = length(prob), link = "identity", 
+    latent = NULL, quantile_y = NULL) 
+{
+    link <- tryCatch(match.fun(link), error = handle_link_functions(link))
+    draw_binomial(prob = prob, N = N, link = link, trials = 1, 
+        latent = latent, quantile_y = quantile_y)
+}
+```
+
+```{r}
+#drawbinomial
+function (prob = link(latent), N = length(prob), link = "identity", 
+    latent = NULL, quantile_y = NULL) 
+{
+    link <- tryCatch(match.fun(link), error = handle_link_functions(link))
+    draw_binomial(prob = prob, N = N, link = link, trials = 1, 
+        latent = latent, quantile_y = quantile_y)
+}
+
+function (prob = link(latent), trials = 1, N = length(prob), 
+    latent = NULL, link = "identity", quantile_y = NULL) 
+{
+    link <- tryCatch(match.fun(link), error = handle_link_functions(link))
+    if (mode(prob) != "numeric") {
+        stop("Probabilities provided in the `prob` argument must be numeric.")
+    }
+    if (!all(na.omit(0 <= prob & prob <= 1))) {
+        stop("The identity link requires probability values between 0 and 1,", 
+            "inclusive.")
+    }
+    else if (any(is.na(prob))) {
+        warning("At least one specified probability (`prob`) was NA.")
+    }
+    if (N%%length(prob)) {
+        stop("`N` is not an even multiple of the length of the number of\n      probabilities, `prob`.")
+    }
+    if (is.vector(trials) && length(trials) > 1) {
+        if (N%%length(trials) != 0) {
+            stop("`N` is not an even multiple of the length of the number of\n        trials, `trials`.")
+        }
+        if (!is.integer(trials) && is.numeric(trials) && any(trials%%1 != 
+            0)) {
+            stop("All numbers of trials should be integer numbers.")
+        }
+    }
+    if (!is.null(dim(trials))) {
+        stop("Number of trials must be an integer or vector, not higher-dimensional.")
+    }
+    if (is.null(trials) || any(is.na(trials))) {
+        stop("Number of trials must be specified, not null or NA.")
+    }
+    if (!is.integer(trials) && is.numeric(trials) && any(trials%%1 != 
+        0)) {
+        stop("Number of trials must be an integer.")
+    }
+    if (any(trials <= 0)) {
+        stop("Number of trials must be a positive integer.")
+    }
+    if (!is.null(quantile_y) && (length(prob) > 1 || length(trials) > 
+        1)) {
+        stop("When generating a correlated binary or binomial random variable, the ", 
+            "`prob` and `trials` arguments must be single numbers and not a ", 
+            "function of other variables.")
+    }
+    if (is.null(quantile_y)) {
+        return(rbinom(N, trials, prob))
+    }
+    else {
+        return(qbinom(quantile_y, trials, prob))
+    }
+}
+```
+
+#### Reference
+
+Below is the reference code from Getting Started Section of fabricatr.
+
+```{r}
+voters <- fabricate(
+  N = 1000,
+  group_id = rep(1:10, 100),
+  ideology = draw_normal_icc(mean = 0, N = N, clusters = group_id, ICC = 0.7),
+  ideological_label = draw_ordered(
+    x = ideology,
+    break_labels = c(
+      "Very Conservative", "Conservative",
+      "Liberal", "Very Liberal"
+    )
+  ),
+  income = exp(rlnorm(n = N, meanlog = 2.4 - (ideology * 0.1), sdlog = 0.12)),
+  Q1_immigration = draw_likert(x = ideology, min = -5, max = 5, bins = 7),
+  Q2_defence = draw_likert(x = ideology + 0.5, min = -5, max = 5, bins = 7),
+  treatment = draw_binary(0.5, N = N),
+  probs = ideology + 1.2 * treatment,
+  proposition_vote = draw_binary(latent = ideology + 1.2 * treatment, link = "probit")
+)
+```
+
+```{r}
+categorical_example <- fabricatr::fabricate(
+  N = 6,
+  p1 = runif(N, 0, 1),
+  p2 = runif(N, 0, 1),
+  p3 = runif(N, 0, 1),
+  cat = fabricatr::draw_categorical(N = N, prob = cbind(p1, p2, p3))
+)
+```
+
+```{r}
+categorical_example
+```
+
+# Resources
+
+Here are a few resources I refer to from the fabricatr package.
+There are a total of 9 articles there as a how to guide.
+Declare Design is a good package to read.
+
+[Getting Started](https://declaredesign.org/r/fabricatr/articles/getting_started.html)
+
+[Common Social Science Variables](https://declaredesign.org/r/fabricatr/articles/common_social.html)
+
+
